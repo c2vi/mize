@@ -3,10 +3,10 @@ pub mod server;
 
 static HELP_MESSAGE: &str = "\
 Usage:
-    mize [options] [command] [options for command]
+    mize-server [options] [command] [options for command]
 
 Available Commands:
-    server          starts the server
+    run             starts the server
     help            prints this help message
     version         prints the version
 
@@ -17,9 +17,12 @@ Available options
 
 //some flags e.g: "--file /tmp" can require that the next argument belongs to them instead of being
 //the command
-static FLAGS_WITH_ARGUMENTS: [&str: 0] = [];
+static FLAGS_WITH_ARGUMENTS: [&str; 0] = [];
 
-static AVAILABLE_COMMANDS: [&str: 1] = [server];
+static AVAILABLE_COMMANDS: [&str; 3] = ["run", "help", "version"];
+
+static AVAILABLE_FLAGS: [&str; 3] = ["--version", "--help"];
+static AVAILABLE_ONE_LETTER_FLAGS: [&str; 3] = ["v", "h"];
 
 static VERSION_MESSAGE: &str = "\
 Version: 0
@@ -46,16 +49,38 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     //### sort out the flags for the main program and the args for the command
-    let main_flags:Vec<String> = [].to_vec();
+    let mut main_flags:Vec<String> = Vec::new();
+    let mut command= String::from("");
+    let mut command_args = Vec::new();
 
-    for arg in &args[1..] {
-        //if arg
-        println!("{}", arg.chars().next().unwrap())
-    }
+    for i in 1..args.len() {
+        if args[i].chars().next().unwrap() == '-' {
+            main_flags.push(args[i].clone());
+            // i != 0 bcs what if the programm name is in FLAGS_WITH_ARGUMENTS for some reason?
+        } else if i != 0 && FLAGS_WITH_ARGUMENTS.contains(&&args[i -1][..]) {
+            main_flags.push(args[i].clone());
 
     //#### get the command to "run"
-    
+        } else if AVAILABLE_COMMANDS.contains(&&args[i][..]){
+            command = args[i].clone();
+            for a in i..args.len(){
+                command_args.push(args[a].clone());
+            }
+            break;
+        } else {
+            println!("Command \"{}\" not found!!\n", args[i]);
+            println!("{}", HELP_MESSAGE);
+            std::process::exit(1);
+        }
+    }
+
     //#### "run" the command and pass the options and subcommands to it
+    match &command[..] {
+        "run" => crate::server::run_server(command_args),
+        "help" => println!("{}", HELP_MESSAGE),
+        "version" => println!("{}", VERSION_MESSAGE),
+        _ => {println!("Command not found!!\n"); println!("{}", HELP_MESSAGE);},
+    }
 
 }
 
