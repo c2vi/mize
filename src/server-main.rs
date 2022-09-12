@@ -1,28 +1,29 @@
-
-pub mod server;
+extern crate mize;
 
 static HELP_MESSAGE: &str = "\
 Usage:
     mize-server [options] [command] [options for command]
 
 Available Commands:
-    run             starts the server
-    help            prints this help message
-    version         prints the version
+    run                starts the server
+    help               prints this help message
+    version            prints the version
+    import             imports a file as a item of type file into the server
 
 Available options
-    -h --help       prints this help message
-    -v --version    prints the version
+    -h --help          prints this help message
+    -v --version       prints the version
+    -f --folder        the mize-server-folder   
 ";
 
 //some flags e.g: "--file /tmp" can require that the next argument belongs to them instead of being
 //the command
-static FLAGS_WITH_ARGUMENTS: [&str; 0] = [];
+static FLAGS_WITH_ARGUMENTS: [&str; 2] = ["--folder", "-f"];
 
-static AVAILABLE_COMMANDS: [&str; 3] = ["run", "help", "version"];
+static AVAILABLE_COMMANDS: [&str; 6] = ["run", "help", "version", "import-js", "import-render", "import"];
 
-static AVAILABLE_FLAGS: [&str; 3] = ["--version", "--help"];
-static AVAILABLE_ONE_LETTER_FLAGS: [&str; 3] = ["v", "h"];
+static AVAILABLE_FLAGS: [&str; 4] = ["--version", "--help", "--folder", "-f"];
+//static AVAILABLE_ONE_LETTER_FLAGS: [&str; 2] = ["v", "h"];
 
 static VERSION_MESSAGE: &str = "\
 Version: 0
@@ -76,7 +77,8 @@ fn main() {
 
     //#### "run" the command and pass the options and subcommands to it
     match &command[..] {
-        "run" => crate::server::run_server(command_args),
+        "run" => mize::server::run_server(args),
+        "import" => mize::server::server_utils::import(args),
         "help" => println!("{}", HELP_MESSAGE),
         "version" => println!("{}", VERSION_MESSAGE),
         _ => {println!("Command not found!!\n"); println!("{}", HELP_MESSAGE);},
