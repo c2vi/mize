@@ -7,14 +7,15 @@ edition = "2021"
 
 [[bin]]
 name = "server"
-path = "server-main.rs"
+path = "src/server-main.rs"
 
 [[bin]]
 name = "client"
-path = "client-main.rs"
+path = "src/client-main.rs"
 
 [dependencies]
 futures-util = "0.3.24"
+rocksdb = "0.19.0"
 tokio = {version = "1.21.0", features = ["full"]}
 tokio-stream = "0.1.9"
 warp = "0.3.2"

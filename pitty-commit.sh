@@ -4,7 +4,9 @@
 
 date +"%a %b %d" >> pitty-commit.sh
 git add pitty-commit.sh
-git commit -m "I am sorry. #pitty-commit"
+git commit -m "I am sorry for this. #pitty-commit"
+git push
 
+exit
 # a list of all the dates I did nothing on
-Wed Sep 14
+Wed Sep 13

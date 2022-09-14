@@ -1,3 +1,6 @@
+
+#![ allow( warnings ) ]
+
 extern crate mize;
 
 static HELP_MESSAGE: &str = "\

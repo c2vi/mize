@@ -1,6 +1,7 @@
 
 
 pub mod server_utils;
+pub mod itemstore;
 
 use futures_util::{FutureExt, StreamExt};
 use warp::Filter;
@@ -68,12 +69,14 @@ pub fn run_server(args: Vec<String>) {
     }
 
     //### prep the mize_folder
-    if let Err(err) = crate::server::server_utils::init_mize_folder(mize_folder) {
-        println!("{}", err.message);
-    }
+    //if let Err(err) = crate::server::server_utils::init_mize_folder(mize_folder) {
+        //println!("{}", err.message);
+    //}
+    
+    // get itemstore
+    let itemstore = crate::server::itemstore::itemstore::new(mize_folder + "/db");
 
     //run the webserver
-    //hyper_server();
     warp_server();
 }
 
