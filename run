@@ -1,3 +1,3 @@
 #!/bin/bash 
 
-cargo run --bin server -- --folder=./gitignore/folder
+cargo run --bin server -- --folder=./gitignore/folder run
