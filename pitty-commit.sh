@@ -10,3 +10,4 @@ git push
 exit
 # a list of all the dates I did nothing on
 Wed Sep 13
+Fri Sep 16
