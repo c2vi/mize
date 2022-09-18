@@ -1,24 +1,27 @@
 
-use rocksdb::{SingleThreaded, DBCommon, DB, Options};
 use std::io;
+use surrealdb::Datastore;
 
 pub struct itemstore {
-    db: DB,
+    db: surrealdb::Datastore,
 }
 
-impl itemstore {
-    pub fn new(path: String) -> itemstore {
-        let db = DB::open_default(&path).expect(&format!("Could not open rocksdb database at {}", &path)[..]);
+pub type Item = Vec<[String; 2]>;
 
-        match db.get(b"0") {
+
+impl itemstore {
+    pub async fn new(path: String) -> itemstore {
+        let ds = Datastore::new(&(String::from("file://") + &path[..] + "/db")[..]).await.expect("Could not open database");
+
+        let mut tr = ds.transaction(true, false).await.expect("creation of transaction failed");
+
+        match tr.get(vec!('0' as u8)).await {
             Ok(Some(val)) => (),
             Ok(None) => {
-                //db.set(b"0", )
-                println!("hi")
             },
-            Err(e) => println!("Error reading item 0 from db: {}", e),
-        }
-        return itemstore{db:db};
+            Err(e) => println!("Error while getting item index with id 0: {}", e)
+        };
+        return itemstore {db:ds};
     }
 }
 
