@@ -100,7 +100,6 @@ async fn warp_server(mize_folder: String) {
  
     // get itemstore
     let itemstore = crate::server::itemstore::itemstore::new(mize_folder + "/db").await;
-    println!("haöasldjkfsdfi");
 
     let mut clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
 
