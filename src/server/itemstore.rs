@@ -1,5 +1,5 @@
 
-use std::io;
+use std::{io, fmt::format};
 use surrealdb::Datastore;
 use itertools::Itertools;
 
@@ -72,8 +72,8 @@ impl itemstore {
         let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
             Ok(Some(val)) => decode(val),
             Ok(None) => {
-                self.create(new_item);
                 tr.cancel();
+                self.create(new_item);
                 return;
             },
             Err(e) => panic!("Error while querying the db: {}", e),
@@ -95,10 +95,31 @@ impl itemstore {
     pub async fn delete(&self, id: u64){
     }
 
-    //pub async fn get(&self, id: u64) -> Item {
-        //let mut tr = self.db.transaction(false, false).await.expect("creation of transaction failed");
-    //}
+    pub async fn get(&self, id: u64) -> Item {
+        let mut tr = self.db.transaction(false, false).await.expect("creation of transaction failed");
+        let mut item: Item = Vec::new();
 
+        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+            Ok(Some(val)) => decode(val),
+            Ok(None) => {
+                panic!("index of item {} not found", id);
+            },
+            Err(e) => panic!("Error while querying the db: {}", e),
+        };
+
+        for key in keys {
+            let mut field: [String; 2] = [String::new(), String::new()];
+            field[0] = key.clone();
+            field[1] = match tr.get(format!("{}:{}", id, key)).await {
+                Ok(Some(val)) => String::from_utf8(val)
+                    .expect("error converting value to utf-8 String"),
+                Ok(None) => panic!("a field that should be there wasn't"),
+                Err(e) => panic!("Error while querying the db: {}", e),
+            };
+            item.push(field);
+        }
+        return item;
+    }
 }
 
 pub fn decode(bytes: Vec<u8>) -> Vec<String> {
