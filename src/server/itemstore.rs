@@ -1,6 +1,7 @@
 
 use std::io;
 use surrealdb::Datastore;
+use itertools::Itertools;
 
 pub struct itemstore {
     db: surrealdb::Datastore,
@@ -66,6 +67,29 @@ impl itemstore {
     }
 
     pub async fn update(&self, id: u64, new_item: Item){
+        let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
+
+        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+            Ok(Some(val)) => decode(val),
+            Ok(None) => {
+                self.create(new_item);
+                tr.cancel();
+                return;
+            },
+            Err(e) => panic!("Error while querying the db: {}", e),
+        };
+
+        for field in new_item {
+            let key = format!("{}:{}", id, field[0]);
+            let val = field[1].clone();
+            keys.push(field[0].clone());
+            tr.set(key.into_bytes(), val.into_bytes()).await;
+        }
+
+        keys = keys.into_iter().unique().collect::<Vec<String>>();
+        tr.set(format!("{}", id).into_bytes(), encode(keys)).await;
+
+        tr.commit().await;
     }
 
     pub async fn delete(&self, id: u64){
