@@ -93,7 +93,21 @@ impl itemstore {
     }
 
     pub async fn delete(&self, id: u64){
+        let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
 
+        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+            Ok(Some(val)) => decode(val),
+            Ok(None) => {
+                panic!("index of item {} not found", id);
+            },
+            Err(e) => panic!("Error while querying the db: {}", e),
+        };
+
+        for key in keys {
+            tr.del(key.into_bytes()).await;
+        }
+        tr.del(format!("{}", id)).await;
+        tr.commit().await;
     }
 
     pub async fn get(&self, id: u64) -> Item {
