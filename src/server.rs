@@ -2,6 +2,7 @@
 
 pub mod server_utils;
 pub mod itemstore;
+pub mod proto;
 
 use futures_util::{FutureExt, StreamExt};
 use warp::Filter;
@@ -99,7 +100,7 @@ async fn warp_server(mize_folder: String) {
     //## $api/rest/
  
     // get itemstore
-    let itemstore = crate::server::itemstore::itemstore::new(mize_folder + "/db").await;
+    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder + "/db").await;
 
     let mut clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
 

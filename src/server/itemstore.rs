@@ -1,17 +1,16 @@
 
 use std::{io, fmt::format};
-use surrealdb::Datastore;
+use surrealdb::{Datastore, Key, Val};
 use itertools::Itertools;
 
-pub struct itemstore {
+pub struct Itemstore {
     db: surrealdb::Datastore,
 }
 
-pub type Item = Vec<[String; 2]>;
+pub type Item = Vec<[Vec<u8>; 2]>;
 
-
-impl itemstore {
-    pub async fn new(path: String) -> itemstore {
+impl Itemstore {
+    pub async fn new(path: String) -> Itemstore {
         let ds = Datastore::new(&(String::from("file://") + &path[..] + "/db")[..]).await.expect("Could not open database");
         println!("in new fn");
 
@@ -20,7 +19,7 @@ impl itemstore {
         match tr.get(vec!('0' as u8)).await {
             Ok(Some(val)) => println!("item 0 already created"),
             Ok(None) => {
-                let init = vec!(String::from("num_of_items"), String::from("next_free_id"));
+                let init = vec!("num_of_items".as_bytes().to_vec(), "next_free_id".as_bytes().to_vec());
                 tr.set("0".to_string().into_bytes(), encode(init)).await;
                 tr.set("0:num_of_items".to_string().into_bytes(), vec!('1' as u8)).await;
                 tr.set("0:next_free_id".to_string().into_bytes(), vec!('1' as u8)).await;
@@ -28,24 +27,25 @@ impl itemstore {
             },
             Err(e) => println!("Error while getting item index with id 0: {}", e)
         };
-        return itemstore {db:ds};
+        return Itemstore {db:ds};
     }
 
     pub async fn create(&self, item: Item) -> u64 {
         let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
-        let id = String::from_utf8(tr.get("0:next_free_id").await
+        let id = tr.get("0:next_free_id").await
             .expect("no item with id 0 when there definetly should be one")
-            .expect("error reading item 0 from db"))
-            .expect("error converting from utf-8 to String");
-        let mut keys: Vec<String> = Vec::new();
+            .expect("error reading item 0 from db");
+        let mut keys: Vec<Vec<u8>> = Vec::new();
 
         for field in item {
-            let key = format!("{}:{}", id, field[0]);
+            let mut key = id.clone();
+            key.push(':' as u8);
+            key.extend(field[0].clone());
             let val = field[1].clone();
             keys.push(field[0].clone());
-            tr.set(key.into_bytes(), val.into_bytes()).await;
+            tr.set(key, val).await;
         }
-        tr.set(id.clone().into_bytes(), encode(keys)).await;
+        tr.set(id.clone(), encode(keys)).await;
 
         //increment 0:number_of_items by 1
         let num = tr.get("0:num_of_items".to_string().into_bytes()).await
@@ -62,14 +62,13 @@ impl itemstore {
         tr.set("0:next_free_id".to_string().into_bytes(), num);
 
         tr.commit().await;
-        let idvec = id.into_bytes();
-        return u64::from_be_bytes([idvec[0], idvec[1], idvec[2], idvec[3], idvec[4], idvec[5], idvec[6], idvec[7], ])
+        return u64::from_be_bytes([id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], ])
     }
 
     pub async fn update(&self, id: u64, new_item: Item){
         let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
 
-        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
             Ok(Some(val)) => decode(val),
             Ok(None) => {
                 tr.cancel();
@@ -80,13 +79,15 @@ impl itemstore {
         };
 
         for field in new_item {
-            let key = format!("{}:{}", id, field[0]);
+            let mut key = id.to_be_bytes().to_vec();
+            key.push(':' as u8);
+            key.extend(field[0].clone());
             let val = field[1].clone();
             keys.push(field[0].clone());
-            tr.set(key.into_bytes(), val.into_bytes()).await;
+            tr.set(key, val).await;
         }
 
-        keys = keys.into_iter().unique().collect::<Vec<String>>();
+        keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
         tr.set(format!("{}", id).into_bytes(), encode(keys)).await;
 
         tr.commit().await;
@@ -95,7 +96,7 @@ impl itemstore {
     pub async fn delete(&self, id: u64){
         let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
 
-        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
             Ok(Some(val)) => decode(val),
             Ok(None) => {
                 panic!("index of item {} not found", id);
@@ -104,7 +105,7 @@ impl itemstore {
         };
 
         for key in keys {
-            tr.del(key.into_bytes()).await;
+            tr.del(key).await;
         }
         tr.del(format!("{}", id)).await;
         tr.commit().await;
@@ -114,7 +115,7 @@ impl itemstore {
         let mut tr = self.db.transaction(false, false).await.expect("creation of transaction failed");
         let mut item: Item = Vec::new();
 
-        let mut keys: Vec<String> = match tr.get(format!("{}", id).into_bytes()).await {
+        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
             Ok(Some(val)) => decode(val),
             Ok(None) => {
                 panic!("index of item {} not found", id);
@@ -123,11 +124,13 @@ impl itemstore {
         };
 
         for key in keys {
-            let mut field: [String; 2] = [String::new(), String::new()];
+            let mut field: [Vec<u8>; 2] = [Vec::new(), Vec::new()];
             field[0] = key.clone();
-            field[1] = match tr.get(format!("{}:{}", id, key)).await {
-                Ok(Some(val)) => String::from_utf8(val)
-                    .expect("error converting value to utf-8 String"),
+            let mut ke = id.to_be_bytes().to_vec();
+            ke.push(':' as u8);
+            ke.extend(key.clone());
+            field[1] = match tr.get(ke).await {
+                Ok(Some(val)) => val,
                 Ok(None) => panic!("a field that should be there wasn't"),
                 Err(e) => panic!("Error while querying the db: {}", e),
             };
@@ -137,14 +140,14 @@ impl itemstore {
     }
 }
 
-pub fn decode(bytes: Vec<u8>) -> Vec<String> {
+pub fn decode(bytes: Vec<u8>) -> Vec<Vec<u8>> {
     let mut count = 0;
-    let mut index: Vec<String> = Vec::new();
+    let mut index: Vec<Vec<u8>> = Vec::new();
     let mut key: Vec<u8> = Vec::new();
     loop {
         if bytes[count] == '$' as u8 {
             if key.len() != 0 {
-                index.push(String::from_utf8(key.clone()).expect("Error decoding key"));
+                index.push(key.clone());
                 key.clear();
             }
         } else if bytes[count] == '!' as u8 {
@@ -154,10 +157,8 @@ pub fn decode(bytes: Vec<u8>) -> Vec<String> {
             key.push(bytes[count]);
         }
 
-
-
         if count == bytes.len() -1 {
-            index.push(String::from_utf8(key.clone()).expect("Error decoding key"));
+            index.push(key.clone());
         }
 
         count += 1;
@@ -166,23 +167,22 @@ pub fn decode(bytes: Vec<u8>) -> Vec<String> {
     return index;
 }
 
-pub fn encode(index: Vec<String>) -> Vec<u8> {
+pub fn encode(index: Vec<Vec<u8>>) -> Vec<u8> {
     let mut bytes: Vec<u8> = Vec::new();
     for key in index {
-        let mut b = key.into_bytes();
         let mut count = 0;
 
         loop {
-            if b[count] == '!' as u8 || b[count] == '$' as u8 {
-                b.insert(count, '!' as u8);
+            if key[count] == '!' as u8 || key[count] == '$' as u8 {
+                bytes.insert(count, '!' as u8);
                 count += 1;
             }
 
             count += 1;
-            if count >= b.len() {break};
+            if count >= key.len() {break};
         }
         bytes.push('$' as u8);
-        bytes.append(&mut b);
+        bytes.extend(key);
     }
 
     return bytes;
