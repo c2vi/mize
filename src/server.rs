@@ -148,6 +148,7 @@ async fn handle_socket_connection(
     // Reading and broadcasting messages
     while let Some(result) = socket_rx.next().await {
         let msg = result.expect("Error when gettin message from WebSocket");
+        let t = msg.clone().into_bytes();
         let clients = clients_clone.lock().await;
         for client in &clients[..] {
             client.tx.send(Ok(msg.clone()));

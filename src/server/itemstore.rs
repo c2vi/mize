@@ -1,5 +1,5 @@
 
-use std::{io, fmt::format};
+use std::{io, fmt::format, vec};
 use surrealdb::{Datastore, Key, Val};
 use itertools::Itertools;
 
@@ -36,6 +36,13 @@ impl Itemstore {
             .expect("no item with id 0 when there definetly should be one")
             .expect("error reading item 0 from db");
         let mut keys: Vec<Vec<u8>> = Vec::new();
+
+        //set id:_commit
+        let mut key = id.clone();
+        key.extend(":_commit".to_string().into_bytes());
+        tr.set(key.clone(), vec![0,0,0,0,0,0,0,0]);
+        keys.push(key);
+
 
         for field in item {
             let mut key = id.clone();
@@ -86,6 +93,21 @@ impl Itemstore {
             keys.push(field[0].clone());
             tr.set(key, val).await;
         }
+
+        //increment commit number
+        let mut commit_key = id.to_be_bytes().to_vec();
+        commit_key.extend(":_commit".to_string().into_bytes());
+
+        let mut commit_num: u64 = match tr.get(&*commit_key).await {
+            Ok(Some(val)) => u64::from_be_bytes(val.try_into().expect("error converting _commit num to u64")),
+            Ok(None) => {
+                panic!("item {} has no _commit", id);
+            },
+            Err(e) => panic!("Error while querying the db: {}", e),
+        };
+
+        commit_num += 1;
+        tr.set(commit_key, commit_num.to_be_bytes());
 
         keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
         tr.set(format!("{}", id).into_bytes(), encode(keys)).await;
