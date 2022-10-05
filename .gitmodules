@@ -1,0 +1,9 @@
+[submodule "js-render"]
+	path = js-render
+	url = https://github.com/sewimoser/mize-js-client.git
+[submodule "js-client"]
+	path = js-client
+	url = https://github.com/sewimoser/mize-js-client.git
+[submodule "first-render"]
+	path = first-render
+	url = https://github.com/sewimoser/mize-first-js-render.git
