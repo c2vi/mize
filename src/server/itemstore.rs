@@ -145,12 +145,14 @@ impl Itemstore {
             Err(e) => panic!("Error while querying the db: {}", e),
         };
 
+        println!("ID: {}", id);
         for key in keys {
             let mut field: [Vec<u8>; 2] = [Vec::new(), Vec::new()];
             field[0] = key.clone();
-            let mut ke = id.to_be_bytes().to_vec();
+            let mut ke = format!("{}", id).into_bytes();
             ke.push(':' as u8);
             ke.extend(key.clone());
+            println!("Key: {}", String::from_utf8(ke.clone()).unwrap());
             field[1] = match tr.get(ke).await {
                 Ok(Some(val)) => val,
                 Ok(None) => panic!("a field that should be there wasn't"),

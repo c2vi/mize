@@ -11,9 +11,14 @@ use warp::ws::{WebSocket, Message};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use std::alloc::handle_alloc_error;
+use std::fs;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use crate::server::proto::Response;
+use crate::server::proto::handle_mize_message;
+
+use self::itemstore::Itemstore;
 
 //static API_PATH_STRING: &str = "$api";
 
@@ -103,37 +108,58 @@ async fn warp_server(mize_folder: String) {
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder + "/db").await;
 
     let mut clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut itemstore_mutex: Arc<Mutex<Itemstore>> = Arc::new(Mutex::new(itemstore));
 
     let socket_route = warp::path!("$api" / "socket")
         .and(warp::ws())
         .map(move |ws: warp::ws::Ws| {
             let clients_clone = Arc::clone(&clients);
-            ws.on_upgrade(move |socket| handle_socket_connection(socket, clients_clone) )
+            let itemstore_clone = Arc::clone(&itemstore_mutex);
+            ws.on_upgrade(move |socket| handle_socket_connection(
+                    socket,
+                    clients_clone,
+                    itemstore_clone
+                )
+            )
     });
 
-    //let temp = warp::path("temp")
-        //.and(warp::ws())
-        //.map(move |ws: warp::ws::Ws| {
-            //ws.hi();
-    //});
+    let render_route = warp::path!("$api" / "render").map(move || "render route");
+    let file_route = warp::path!("$api" / "file").map(move || "file route");
+    //temporary
+    let render_route = warp::path!("$api" / "render" / "first").map(move || {
+        let answer = fs::read_to_string("/home/sebastian/work/mize/first-render/src/main.js").unwrap();
+        warp::http::Response::builder().header("content-type", "text/javascript").body(answer)
+    });
+    let main_route = warp::path!("$api" / "client" / "main.js").map(move || {
+        let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.js").unwrap();
+        warp::http::Response::builder().header("content-type", "application/javascript").body(answer)
+    });
+    let defuatl_route = warp::path::end().map(||{
+        //normally should be included in the binary, but for developing just gonna read the file
+        //so I don't have to recompile all the time
+        //let answer = include_str!("../js-client/src/main.html");
+        let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.html").unwrap();
+        warp::http::Response::builder().body(answer)
+    });
     
-    //let routes = warp::any().map(|| "Hello, World!");
-    let echo = warp::path("echo").map(|| "Hello World");
-    let test = warp::path("test").map(|| {
-
-        let int = 4+4;
-        format!("{}", int)
-    });
-
-    let routes = warp::get().and(socket_route).or(echo).or(test);
+    //let routes = warp::get().and(socket_route).or(render_route).or(file_route).map(move |hi| "default");
+    let routes = warp::get().and(
+        defuatl_route
+            .or(render_route)
+            .or(file_route)
+            .or(socket_route)
+            .or(main_route),
+            //.or(sum)
+            //.or(times),
+    );
        
     warp::serve(routes).run(([127, 0, 0, 1], 3000)).await;
 }
 
 async fn handle_socket_connection(
     socket: WebSocket,
-    clients_clone: Arc<Mutex<Vec<Client>>>
-    //test: String
+    clients_clone: Arc<Mutex<Vec<Client>>>,
+    itemstore_clone: Arc<Mutex<Itemstore>>,
 ){
     let (socket_tx, mut socket_rx) = socket.split();
     let (client_tx, client_rx) = mpsc::unbounded_channel();
@@ -142,18 +168,27 @@ async fn handle_socket_connection(
     tokio::spawn(client_rx.forward(socket_tx));
 
     let mut cli = clients_clone.lock().await;
-    cli.push(Client{tx: client_tx});
+    cli.push(Client{tx: client_tx.clone()});
     drop(cli);
 
     // Reading and broadcasting messages
     while let Some(result) = socket_rx.next().await {
         let msg = result.expect("Error when gettin message from WebSocket");
-        let t = msg.clone().into_bytes();
-        let clients = clients_clone.lock().await;
-        for client in &clients[..] {
-            client.tx.send(Ok(msg.clone()));
-        }
-        drop(clients);
+
+        let itemstore = &*itemstore_clone.lock().await;
+        match handle_mize_message(msg.clone().into_bytes(), itemstore).await {
+            Response::One(response) => {
+                client_tx.send(Ok(msg)).unwrap()
+            },
+            Response::All(response) => {
+                let clients = clients_clone.lock().await;
+                for client in &clients[..] {
+                    client.tx.send(Ok(msg.clone()));
+                }
+                drop(clients);
+            },
+            Response::None => {let t = 0;},
+        };
     }
 }
 

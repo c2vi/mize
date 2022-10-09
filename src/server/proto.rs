@@ -4,15 +4,21 @@ use std::vec;
 use crate::server::itemstore;
 use crate::server::itemstore::encode;
 
+use super::itemstore::Itemstore;
+
+pub enum Response {
+    One(Vec<u8>),
+    All(Vec<u8>),
+    None,
+}
+
 const VERSION: u8 = 1;
 
-async fn handle_mize_message(
-    message: Vec<u8>,
-    itemstore: itemstore::Itemstore,
-    ) -> Option<Vec<u8>>{
+pub async fn handle_mize_message(
+        message: Vec<u8>,
+        itemstore: &itemstore::Itemstore,
+    ) -> Response {
 
-    let version = &message[0..1];
-    let cmd = &message[1..2];
 
     // 1:   get
     // 2:   give
@@ -26,39 +32,85 @@ async fn handle_mize_message(
     // 10:  update
     // 11:  delete
     // 12:  create
-    match cmd[0] {
+    // 13:  unsupported_version
+
+    //println!("message: {:?}", message);
+    //let version = message.clone().into_iter().nth(0).expect("message has no 0th byte");
+    //let cmd = message.clone().into_iter().nth(1).expect("message has no 1th byte");
+    //println!("after chaos");
+
+    // for some weired reason this stupid solution does not panic, while the obove one and vec[0]
+    // do
+    let mut count = 0;
+
+    let mut cmd: u8 = 0;
+    let mut version: u8 = 0;
+
+    for i in message.clone() {
+        if count == 0 {
+            version = i;
+        }
+        if count == 1 {
+            cmd = i
+        }
+
+        count += 1;
+    };
+
+    println!("VERSION: {}", version);
+    println!("CMD: {}", cmd);
+
+    match cmd {
         1 => {
-            let id: u64 = u64::from_be_bytes(message[2..9].try_into().expect("slice with incorrect length"));
-            let id_bytes = id.to_be_bytes();
-            let mut answer: Vec<u8> = vec![VERSION, 2, id_bytes[0], id_bytes[1], id_bytes[2], id_bytes[3]];
+            //let id_bytes = *&message[2..9].to_owned().clone();
+            let tmp = &message[2..10];
+            let id: u64 = u64::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7]]);
+
+            // answer:
+            // u8: version
+            // u8: cmd (2 for give)
+            // u64: id
+            // u32: num_of_fields
+            // as often as num_of_fields:
+                // u64: key_len
+                // key_len: key
+                // u64: val_len
+                // val_len: val
+            let mut answer: Vec<u8> = vec![VERSION, 2];
+            answer.extend(id.to_be_bytes());
+
             let item = itemstore.get(id).await;
 
-            let mut temp: Vec<Vec<u8>> = Vec::new();
+            let num_of_fields = item.len() as u32;
+            answer.extend(num_of_fields.to_be_bytes());
 
             for field in item {
-                let encoded = encode(field.to_vec());
-                temp.push(encoded);
+                let key_len = field[0].len() as u64;
+                answer.extend(key_len.to_be_bytes());
+                answer.extend(field[0].clone());
+                let val_len = field[1].len() as u64;
+
+                answer.extend(val_len.to_be_bytes());
+                answer.extend(field[1].clone());
             }
-
-
-            return Some(answer);
+            return Response::One(answer);
         },
-        2 => {return None;},
-        3 => {return None;},
-        4 => {return None;},
-        5 => {return None;},
-        6 => {return None;},
-        7 => {return None;},
-        8 => {return None;},
-        9 => {return None;},
-        10 => {return None;},
-        11 => {return None;},
-        12 => {return None;},
-        _ => {return None;},
+        2 => {return Response::None;},
+        3 => {return Response::None;},
+        4 => {return Response::None;},
+        5 => {return Response::None;},
+        6 => {return Response::None;},
+        7 => {return Response::None;},
+        8 => {return Response::None;},
+        9 => {return Response::None;},
+        10 => {return Response::None;},
+        11 => {return Response::None;},
+        12 => {return Response::None;},
+        _ => {return Response::None;},
     }
+
+
 }
-
-
 
 
 
