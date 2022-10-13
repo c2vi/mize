@@ -134,7 +134,7 @@ async fn warp_server(mize_folder: String) {
         let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.js").unwrap();
         warp::http::Response::builder().header("content-type", "application/javascript").body(answer)
     });
-    let defuatl_route = warp::path::end().map(||{
+    let defuatl_route = warp::path::full().map(|path|{
         //normally should be included in the binary, but for developing just gonna read the file
         //so I don't have to recompile all the time
         //let answer = include_str!("../js-client/src/main.html");
@@ -144,11 +144,12 @@ async fn warp_server(mize_folder: String) {
     
     //let routes = warp::get().and(socket_route).or(render_route).or(file_route).map(move |hi| "default");
     let routes = warp::get().and(
-        defuatl_route
-            .or(render_route)
+        
+        render_route
             .or(file_route)
             .or(socket_route)
-            .or(main_route),
+            .or(main_route)
+            .or(defuatl_route)
             //.or(sum)
             //.or(times),
     );
@@ -178,12 +179,12 @@ async fn handle_socket_connection(
         let itemstore = &*itemstore_clone.lock().await;
         match handle_mize_message(msg.clone().into_bytes(), itemstore).await {
             Response::One(response) => {
-                client_tx.send(Ok(msg)).unwrap()
+                client_tx.send(Ok(Message::binary(response.clone()))).unwrap()
             },
             Response::All(response) => {
                 let clients = clients_clone.lock().await;
                 for client in &clients[..] {
-                    client.tx.send(Ok(msg.clone()));
+                    client.tx.send(Ok(Message::binary(response.clone())));
                 }
                 drop(clients);
             },

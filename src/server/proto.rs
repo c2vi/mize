@@ -32,7 +32,8 @@ pub async fn handle_mize_message(
     // 10:  update
     // 11:  delete
     // 12:  create
-    // 13:  unsupported_version
+    // 13:  created_id
+    // 14:  unsupported_version
 
     //println!("message: {:?}", message);
     //let version = message.clone().into_iter().nth(0).expect("message has no 0th byte");
@@ -57,8 +58,8 @@ pub async fn handle_mize_message(
         count += 1;
     };
 
-    println!("VERSION: {}", version);
-    println!("CMD: {}", cmd);
+    //println!("VERSION: {}", version);
+    //println!("CMD: {}", cmd);
 
     match cmd {
         1 => {
@@ -85,10 +86,10 @@ pub async fn handle_mize_message(
             answer.extend(num_of_fields.to_be_bytes());
 
             for field in item {
-                let key_len = field[0].len() as u64;
+                let key_len = field[0].len() as u32;
                 answer.extend(key_len.to_be_bytes());
                 answer.extend(field[0].clone());
-                let val_len = field[1].len() as u64;
+                let val_len = field[1].len() as u32;
 
                 answer.extend(val_len.to_be_bytes());
                 answer.extend(field[1].clone());
@@ -104,8 +105,45 @@ pub async fn handle_mize_message(
         8 => {return Response::None;},
         9 => {return Response::None;},
         10 => {return Response::None;},
-        11 => {return Response::None;},
-        12 => {return Response::None;},
+        11 => {
+            let tmp = &message[2..10];
+            let id: u64 = u64::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7]]);
+            if id == 0 {
+                return Response::None;
+            }
+
+            itemstore.delete(id);
+            return Response::None;
+        },
+        12 => {
+            let tmp = &message[2..6];
+            let num_of_fields: u32 = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
+            let mut item: Vec<[Vec<u8>; 2]> = Vec::new();
+
+            let mut index = 6;
+            for i in 0..num_of_fields {
+                let mut tmp = &message[index..index + 4];
+                let key_len = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
+                let key = message[index + 4..(index + 4 + key_len as usize)].to_vec();
+
+                index += 4 + key_len as usize;
+
+                tmp = &message[index..index + 4];
+                let val_len = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
+                let val = message[index + 4..(index + 4 + val_len as usize)].to_vec();
+                
+                index += 4 + val_len as usize;
+
+                item.push([key, val]);
+            }
+
+            itemstore.create(item).await;
+
+            let anser: Vec<u8> = vec![1,1];
+            return Response::None;
+        },
+        13 => {return Response::None;},
+        14 => {return Response::None;},
         _ => {return Response::None;},
     }
 
