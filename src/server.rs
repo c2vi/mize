@@ -6,7 +6,7 @@ pub mod proto;
 
 use futures_util::{FutureExt, StreamExt};
 use warp::Filter;
-use warp::ws::{WebSocket, Message};
+use warp::ws::{WebSocket, self};
 
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -15,7 +15,7 @@ use std::fs;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use crate::server::proto::Response;
+use crate::server::proto::{Response};
 use crate::server::proto::handle_mize_message;
 
 use self::itemstore::Itemstore;
@@ -54,7 +54,7 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //
 
 struct Client {
-    tx: UnboundedSender<Result<Message, warp::Error>>
+    tx: UnboundedSender<Result<ws::Message, warp::Error>>
 }
 
 pub fn run_server(args: Vec<String>) {
@@ -177,14 +177,14 @@ async fn handle_socket_connection(
         let msg = result.expect("Error when gettin message from WebSocket");
 
         let itemstore = &*itemstore_clone.lock().await;
-        match handle_mize_message(msg.clone().into_bytes(), itemstore).await {
+        match handle_mize_message(proto::Message::new(msg.clone().into_bytes()), itemstore).await {
             Response::One(response) => {
-                client_tx.send(Ok(Message::binary(response.clone()))).unwrap()
+                client_tx.send(Ok(ws::Message::binary(response.clone()))).unwrap()
             },
             Response::All(response) => {
                 let clients = clients_clone.lock().await;
                 for client in &clients[..] {
-                    client.tx.send(Ok(Message::binary(response.clone())));
+                    client.tx.send(Ok(ws::Message::binary(response.clone())));
                 }
                 drop(clients);
             },
