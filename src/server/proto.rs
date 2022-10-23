@@ -1,4 +1,5 @@
 
+//use std::panic::update_hook;
 use std::vec;
 
 use crate::server::itemstore;
@@ -163,6 +164,8 @@ pub async fn handle_mize_message(
         5 => {return Response::None;},
         6 => {return Response::None;},
         7 => {return Response::None;},
+
+        //update_request
         8 => {
             let mut answer: Vec<u8> = message.msg.clone();
             answer[1] = 10;
@@ -173,18 +176,25 @@ pub async fn handle_mize_message(
 
             let num_of_updates = message.get_u32();
 
-            for i in 0..num_of_updates {
+            for i in 0..num_of_updates as usize {
                 let key_len = message.get_u32();
                 let key = message.get_bytes(key_len as usize);
+                //println!("Key: {}", String::from_utf8(key.clone()).unwrap());
 
                 let update_len = message.get_u32();
                 let update = message.get_bytes(update_len as usize);
 
-                //change the item
-                for mut field in item.clone() {
-                    if field[0] == key {
-                        field[1] = apply_update(field[1].clone(), update.clone());
+                let mut found = false;
+                for a in 0..num_of_updates as usize {
+                    if item[a][0] == key {
+                        item[a][1] = apply_update(&item[a][1], &update);
+                        found = true;
+                        break;
                     }
+                }
+                if found == false {
+                    let index = item.len() +1;
+                    item[index][1] = apply_update(&item[index][1], &update)
                 }
             }
             itemstore.update(id, item).await;
@@ -242,7 +252,113 @@ pub async fn handle_mize_message(
 
 }
 
-pub fn apply_update(val: Vec<u8>, update: Vec<u8>) -> Vec<u8>{
-    Vec::new()
+pub fn apply_update(val: &Vec<u8>, updates: &Vec<u8>) -> Vec<u8>{
+    let not_enough_bytes = "not enough bytes in update";
+    let mut val = val.clone();
+    let mut update_iter = updates.clone().into_iter();
+    while true {
+        if let Some(operation) = update_iter.next(){
+            let mut new_val: Vec<u8> = Vec::new();
+            let mut val_iter = val.clone().into_iter();
+            match operation {
+                //r,start:u32,stop:u32,bytes start..stop
+                0 => {
+                    let mut start_bytes: [u8; 4] = [0,0,0,0];
+                    for i in 0..4 {start_bytes[i] = update_iter.next().expect(not_enough_bytes);};
+                    let start = u32::from_be_bytes(start_bytes);
+
+                    let mut stop_bytes: [u8; 4] = [0,0,0,0];
+                    for i in 0..4 {stop_bytes[i] = update_iter.next().expect(not_enough_bytes);};
+                    let stop = u32::from_be_bytes(stop_bytes);
+
+                    //add the stuff before
+                    for i in 0..start {new_val.push(val_iter.next().expect(not_enough_bytes));};
+
+                    //add the new stuff
+                    for i in start..stop {new_val.push(update_iter.next().expect(not_enough_bytes));};
+
+                    //skip all the bytes that should be replaced 
+                    for i in 0..stop-start {val_iter.next().expect(not_enough_bytes);}
+
+                    //add stuff after
+                    for byte in val_iter {
+                        new_val.push(byte);
+                    }
+                },
+                //i,start:u32, stop:u32, bytes stop-start
+                1 => {
+                    let mut start_bytes: [u8; 4] = [0,0,0,0];
+                    for i in 0..4 {start_bytes[i] = update_iter.next().expect(not_enough_bytes);};
+                    let start = u32::from_be_bytes(start_bytes);
+
+                    let mut stop_bytes: [u8; 4] = [0,0,0,0];
+                    for i in 0..4 {stop_bytes[i] = update_iter.next().expect(not_enough_bytes);};
+                    let stop = u32::from_be_bytes(stop_bytes);
+
+                    //add the stuff before
+                    for i in 0..start {new_val.push(val_iter.next().expect(not_enough_bytes));};
+
+                    //add the new stuff
+                    for i in start..stop {new_val.push(update_iter.next().expect(not_enough_bytes));};
+
+                    //add stuff after
+                    for byte in val_iter {
+                        new_val.push(byte);
+                    }
+
+                    //while true {
+                        //if let Some(byte) = update_iter.next() {
+                            //new_val.push(byte);
+                        //} else {break;}
+                    //}
+                },
+                //d,start:u32,stop:u32
+                2 => {
+                },
+                _ => {panic!("unknown update command")}
+            }
+            val = new_val;
+        } else {println!("here");break;}
+    };
+    return val;
 }
+
+//old approach
+//pub fn apply_update(val: &Vec<u8>, update: &Vec<u8>) -> Vec<u8>{
+    //let new_val: Vec<u8> = Vec::new();
+    //let update_iter = update.into_iter();
+    //let val_iter = val.into_iter();
+    //while true {
+        //if let Some(operation) = update_iter.next(){
+            //match *operation {
+                ////r,start:u32,stop:u32,bytes start..stop
+                //0 => {
+                    //let start_bytes: [u8; 4] = [0,0,0,0];
+                    //for i in 0..4 {start_bytes[i] = update_iter.next();};
+                    //let start = u32::from_be_bytes(start_bytes);
+//
+                    //let stop_bytes: [u8; 4] = [0,0,0,0];
+                    //for i in 0..4 {stop_bytes[i] = update_iter.next();};
+                    //let start = u32::from_be_bytes(stop_bytes);
+//
+                    ////add the stuff before
+                    //for i in 0..start {new_val.push(val_iter.next());};
+//
+                    ////add the new stuff
+                    //for i in start..stop {new_val.push(update_iter.next());};
+                //},
+                ////i,start:u32, stop:u32, bytes stop-start
+                //1 => {
+                //},
+                ////d,start:u32,stop:u32
+                //2 => {
+                //},
+            //}
+        //} else {break;}
+    //}
+//}
+
+
+
+
 

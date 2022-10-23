@@ -79,16 +79,20 @@ pub fn run_server(args: Vec<String>) {
         //println!("{}", err.message);
     //}
     
+    println!("TEST");
+    //testing
+    let val = "mize.works".to_string().into_bytes();
+    let mut update: Vec<u8> = Vec::new();
+    update.push(0);
+    update.extend(u32::to_be_bytes(3));
+    update.extend(u32::to_be_bytes(5));
+    update.extend("$$".to_string().into_bytes());
+    let new_val = proto::apply_update(&val, &update);
+    println!("TEST");
+    println!("TEST: {}", String::from_utf8(new_val).unwrap());
 
     //run the webserver
-
-
-
-
-
-
-
-    warp_server(mize_folder);
+    //warp_server(mize_folder);
 }
 
 
