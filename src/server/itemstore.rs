@@ -91,8 +91,7 @@ impl Itemstore {
         };
 
         for field in new_item {
-            let mut key = id.to_be_bytes().to_vec();
-            key.push(':' as u8);
+            let mut key = format!("{}:", id).into_bytes();
             key.extend(field[0].clone());
             let val = field[1].clone();
             keys.push(field[0].clone());
