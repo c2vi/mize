@@ -184,6 +184,7 @@ async fn handle_socket_connection(
 
     // Reading and broadcasting messages
     while let Some(result) = socket_rx.next().await {
+        println!("got message ==================================");
         let msg = result.expect("Error when gettin message from WebSocket");
 
         let itemstore = &*itemstore_clone.lock().await;

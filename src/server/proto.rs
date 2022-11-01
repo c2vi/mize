@@ -5,8 +5,6 @@ use std::vec;
 use crate::server::itemstore;
 use crate::server::itemstore::encode;
 
-use super::itemstore::Itemstore;
-
 pub enum Response {
     One(Vec<u8>),
     All(Vec<u8>),
@@ -176,7 +174,7 @@ pub async fn handle_mize_message(
 
             let num_of_updates = message.get_u32();
 
-            for i in 1..num_of_updates as usize {
+            for i in 0..num_of_updates as usize {
                 let key_len = message.get_u32();
                 let key = message.get_bytes(key_len as usize);
                 //println!("KEY: {}", String::from_utf8(key.clone()).expect("here utf-8"));
@@ -223,24 +221,18 @@ pub async fn handle_mize_message(
 
         //create
         12 => {
-            let tmp = &old_message[2..6];
-            let num_of_fields: u32 = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
+            let num_of_fields = message.get_u32();
             let mut item: Vec<[Vec<u8>; 2]> = Vec::new();
 
             let mut index = 6;
+
             for i in 0..num_of_fields {
-                let mut tmp = &old_message[index..index + 4];
-                let key_len = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
-                let key = old_message[index + 4..(index + 4 + key_len as usize)].to_vec();
+                let key_len = message.get_u32();
+                let key = message.get_bytes(key_len as usize);
 
-                index += 4 + key_len as usize;
-
-                tmp = &old_message[index..index + 4];
-                let val_len = u32::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3]]);
-                let val = old_message[index + 4..(index + 4 + val_len as usize)].to_vec();
+                let val_len = message.get_u32();
+                let val = message.get_bytes(val_len as usize);
                 
-                index += 4 + val_len as usize;
-
                 item.push([key, val]);
             }
 

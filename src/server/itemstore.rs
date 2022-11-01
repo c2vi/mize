@@ -99,8 +99,7 @@ impl Itemstore {
         }
 
         //increment commit number
-        let mut commit_key = id.to_be_bytes().to_vec();
-        commit_key.extend(":_commit".to_string().into_bytes());
+        let mut commit_key = format!("{}:_commit", id).into_bytes();
 
         let mut commit_num: u64 = match tr.get(&*commit_key).await {
             Ok(Some(val)) => u64::from_be_bytes(val.try_into().expect("error converting _commit num to u64")),
