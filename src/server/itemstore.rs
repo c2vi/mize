@@ -110,7 +110,7 @@ impl Itemstore {
         };
 
         commit_num += 1;
-        tr.set(commit_key, commit_num.to_be_bytes());
+        tr.set(commit_key, commit_num.to_be_bytes()).await;
 
         keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
         tr.set(format!("{}", id).into_bytes(), encode(keys)).await;
