@@ -53,7 +53,7 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //";
 //
 
-struct Client {
+pub struct Client {
     tx: UnboundedSender<Result<ws::Message, warp::Error>>
 }
 
@@ -74,29 +74,6 @@ pub fn run_server(args: Vec<String>) {
         }
     }
 
-    //### prep the mize_folder
-    //if let Err(err) = crate::server::server_utils::init_mize_folder(mize_folder) {
-        //println!("{}", err.message);
-    //}
-    
-    //println!("TEST");
-    //testing
-    //let val = "mize.works".to_string().into_bytes();
-    //let mut update: Vec<u8> = Vec::new();
-    //update.push(2);
-    //update.extend(u32::to_be_bytes(3));
-    //update.extend(u32::to_be_bytes(4));
-    //update.extend("$$".to_string().into_bytes());
-    
-    //update.push(0);
-    //update.extend(u32::to_be_bytes(5));
-    //update.extend(u32::to_be_bytes(7));
-    //update.extend("$$".to_string().into_bytes());
-
-    //let new_val = proto::apply_update(&val, &update);
-    //println!("TEST");
-    //println!("TEST: {}", String::from_utf8(new_val).unwrap());
-
     //run the webserver
     warp_server(mize_folder);
 }
@@ -115,7 +92,7 @@ async fn warp_server(mize_folder: String) {
     //## $api/rest/
  
     // get itemstore
-    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder + "/db").await;
+    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder + "/db").await.expect("error creating itemstore");
 
     let mut clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
     let mut itemstore_mutex: Arc<Mutex<Itemstore>> = Arc::new(Mutex::new(itemstore));
@@ -188,21 +165,32 @@ async fn handle_socket_connection(
         let msg = result.expect("Error when gettin message from WebSocket");
 
         let itemstore = &*itemstore_clone.lock().await;
-        match handle_mize_message(proto::Message::new(msg.clone().into_bytes()), itemstore).await {
-            Response::One(response) => {
-                client_tx.send(Ok(ws::Message::binary(response.clone()))).unwrap()
-            },
-            Response::All(response) => {
-                let clients = clients_clone.lock().await;
-                println!("Clients: {}", clients.len());
-                for client in &clients[..] {
-                    client.tx.send(Ok(ws::Message::binary(response.clone())));
-                }
-                drop(clients);
-            },
-            Response::None => {let t = 0;},
+        let responses = handle_mize_message(proto::Message::new(msg.clone().into_bytes()), itemstore).await;
+        for response in responses {
+            match response {
+                Response::One(response) => {
+                    client_tx.send(Ok(ws::Message::binary(response.clone()))).unwrap()
+                },
+                Response::All(response) => {
+                    send_to_all_clients(ws::Message::binary(response), clients_clone.clone()).await;
+                },
+                Response::AllSubbed(id, response) => {
+                    send_to_all_subed_clients(id, ws::Message::binary(response), clients_clone.clone()).await;
+                },
+                Response::None => {let t = 0;},
+            };
         };
+    };
+}
+
+pub async fn send_to_all_clients(message: ws::Message, clients_clone: Arc<Mutex<Vec<Client>>>){
+    let clients = clients_clone.lock().await;
+    for client in &clients[..] {
+        client.tx.send(Ok(ws::Message::binary(message.clone())));
     }
+}
+
+pub async fn send_to_all_subed_clients(id: u64, message: ws::Message, clients: Arc<Mutex<Vec<Client>>>){
 }
 
 

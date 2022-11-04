@@ -1,0 +1,33 @@
+
+Can't delete item 0:
+  code: 100
+  category: "don't know yet"
+  message: "You can't delete item number 0. This item contains mandatory Config for the Server."
+
+Error with Surrealdb:
+  code: 128
+  category: "data_storage"
+
+num_of_items missing in item0:
+  code: 101
+  category: "key_missing::item0::num_of_items"
+
+next_free_id missing in item0:
+  code: 102
+  category: "key_missing::item0::next_free_id"
+
+_commit missing in item0:
+  code: 103
+  category: "key_missing::item0::_commit"
+
+_commit missing:
+  code: 103
+  category: "key_missing::_commit"
+
+could not read index of item:
+  code: 104
+  category: "data_storage::index_not_found"
+
+_commit not 8 bytes long:
+  code: 105
+  category: "don't know yet"

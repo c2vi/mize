@@ -1,13 +1,54 @@
 
+
+    // 1:   get
+    // 2:   give (by default only give the first 1k bytes, and the first 100 fields)
+    // 3:   get_val (to get more than 1k bytes)
+    // 4:   give_val
+    // 5:   unauthorized
+    // 6:   sub
+    // 7:   unsub
+    // 8:   update_request
+    // 9:   update_deny
+    // 10:  update
+    // 11:  delete
+    // 12:  create
+    // 13:  created_id
+    // 14:  unsupported_version
+    // 15:  get_and_sub
+    // 16:  get_fields
+    // 17:  error
+
+pub static MSG_GET: u8 = 1;
+pub static MSG_GIVE: u8 = 2;
+pub static MSG_GET_VAL: u8 = 3;
+pub static MSG_GIVE_VAL: u8 = 4;
+pub static MSG_UNAUTHORIZED: u8 = 5;
+pub static MSG_SUB: u8 = 6;
+pub static MSG_UNSUB: u8 = 7;
+pub static MSG_UPDATE_REQUEST: u8 = 8;
+pub static MSG_UPDATE_DENY: u8 = 9;
+pub static MSG_UPDATE: u8 = 10;
+pub static MSG_DELETE: u8 = 11;
+pub static MSG_CREATE: u8 = 12;
+pub static MSG_CREATED_ID: u8 = 13;
+pub static MSG_UNSUPPORTED_VERSION: u8 = 14;
+pub static MSG_GET_AND_SUB: u8 = 15;
+pub static MSG_GET_FIELDS: u8 = 16;
+pub static MSG_ERROR: u8 = 17;
+
+
+
 //use std::panic::update_hook;
 use std::vec;
 
 use crate::server::itemstore;
 use crate::server::itemstore::encode;
+use crate::error;
 
 pub enum Response {
     One(Vec<u8>),
     All(Vec<u8>),
+    AllSubbed(u64, Vec<u8>),
     None,
 }
 
@@ -75,25 +116,10 @@ const VERSION: u8 = 1;
 pub async fn handle_mize_message(
         mut message: Message,
         itemstore: &itemstore::Itemstore,
-    ) -> Response {
+    ) -> Vec<Response> {
 
     let old_message = message.msg.clone();
 
-
-    // 1:   get
-    // 2:   give
-    // 3:   get_val
-    // 4:   give_val
-    // 5:   unauthorized
-    // 6:   sub
-    // 7:   unsub
-    // 8:   update_request
-    // 9:   update_deny
-    // 10:  update
-    // 11:  delete
-    // 12:  create
-    // 13:  created_id
-    // 14:  unsupported_version
 
     //println!("message: {:?}", message);
     //let version = message.clone().into_iter().nth(0).expect("message has no 0th byte");
@@ -122,6 +148,7 @@ pub async fn handle_mize_message(
     //println!("CMD: {}", cmd);
 
     match cmd {
+        //get
         1 => {
             //let id_bytes = *&message[2..9].to_owned().clone();
             let tmp = &old_message[2..10];
@@ -140,7 +167,10 @@ pub async fn handle_mize_message(
             let mut answer: Vec<u8> = vec![VERSION, 2];
             answer.extend(id.to_be_bytes());
 
-            let item = itemstore.get(id).await;
+            let mut item = match itemstore.get(id).await {
+                Ok(item) => item,
+                Err(err) => {return vec![err.to_message()]},
+            };
 
             let num_of_fields = item.len() as u32;
             answer.extend(num_of_fields.to_be_bytes());
@@ -149,19 +179,19 @@ pub async fn handle_mize_message(
                 let key_len = field[0].len() as u32;
                 answer.extend(key_len.to_be_bytes());
                 answer.extend(field[0].clone());
-                let val_len = field[1].len() as u32;
 
+                let val_len = field[1].len() as u32;
                 answer.extend(val_len.to_be_bytes());
                 answer.extend(field[1].clone());
             }
-            return Response::One(answer);
+            return vec![Response::One(answer)];
         },
-        2 => {return Response::None;},
-        3 => {return Response::None;},
-        4 => {return Response::None;},
-        5 => {return Response::None;},
-        6 => {return Response::None;},
-        7 => {return Response::None;},
+        2 => {return Vec::new()},
+        3 => {return Vec::new()},
+        4 => {return Vec::new()},
+        5 => {return Vec::new()},
+        6 => {return Vec::new()},
+        7 => {return Vec::new()},
 
         //update_request
         8 => {
@@ -170,7 +200,10 @@ pub async fn handle_mize_message(
 
             let id = message.get_id();
 
-            let mut item = itemstore.get(id).await;
+            let mut item = match itemstore.get(id).await {
+                Ok(item) => item,
+                Err(err) => {return vec![err.to_message()]},
+            };
 
             let num_of_updates = message.get_u32();
 
@@ -184,7 +217,6 @@ pub async fn handle_mize_message(
 
                 let mut found = false;
                 for a in 0..item.len() as usize {
-                    println!("OTHER KEY: {}", String::from_utf8(item[a][0].clone()).expect("here utf-8"));
                     if item[a][0] == key {
                         item[a][1] = apply_update(&item[a][1], &update);
                         found = true;
@@ -192,31 +224,39 @@ pub async fn handle_mize_message(
                     }
                 }
                 if found == false {
-                    println!("should not be here");
                     let index = item.len() +1;
                     //item[index][1] = apply_update(&item[index][1], &update)
                     item.push([key.clone(), apply_update(&item[index][1], &update)])
                 }
             }
-            //println!("ITEM KEY: {}", String::from_utf8(item[1][0].clone()).unwrap());
-            //println!("ITEM VAL: {}", String::from_utf8(item[1][1].clone()).unwrap());
-            itemstore.update(id, item).await;
 
-            return Response::All(answer);
+            if let Err(err) = itemstore.update(id, item).await {
+                return vec![err.to_message()];
+            };
+
+            return vec![Response::All(answer)];
         },
-        9 => {return Response::None;},
-        10 => {return Response::None;},
+        9 => {return Vec::new()},
+        10 => {return Vec::new()},
 
         //delete
         11 => {
+            let response: Vec<Response> = Vec::new();
             let tmp = &old_message[2..10];
             let id: u64 = u64::from_be_bytes([tmp[0], tmp[1], tmp[2], tmp[3], tmp[4], tmp[5], tmp[6], tmp[7]]);
             if id == 0 {
-                return Response::None;
+                let err = error::MizeError{
+                    kind: "don't know yet".to_string(),
+                    code: 100,
+                    message: "You can't delete item number 0. This item contains mandatory Config for the Server.".to_string(),
+                };
+                return vec![err.to_message()];
             }
 
-            itemstore.delete(id);
-            return Response::None;
+            if let Err(err) = itemstore.delete(id).await {
+                return vec![err.to_message()];
+            }
+            return response;
         },
 
         //create
@@ -236,14 +276,16 @@ pub async fn handle_mize_message(
                 item.push([key, val]);
             }
 
-            itemstore.create(item).await;
+            if let Err(err) = itemstore.create(item).await {
+                return vec![err.to_message()];
+            };
 
             let anser: Vec<u8> = vec![1,1];
-            return Response::None;
+            return vec![Response::None];
         },
-        13 => {return Response::None;},
-        14 => {return Response::None;},
-        _ => {return Response::None;},
+        13 => {return Vec::new()},
+        14 => {return Vec::new()},
+        _ => {return Vec::new()},
     }
 
 

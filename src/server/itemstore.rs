@@ -1,7 +1,10 @@
 
+use std::net::ToSocketAddrs;
 use std::{io, fmt::format, vec};
 use surrealdb::{Datastore, Key, Val};
 use itertools::Itertools;
+use crate::error;
+use crate::error::MizeError;
 
 pub struct Itemstore {
     db: surrealdb::Datastore,
@@ -10,33 +13,34 @@ pub struct Itemstore {
 pub type Item = Vec<[Vec<u8>; 2]>;
 
 impl Itemstore {
-    pub async fn new(path: String) -> Itemstore {
+    pub async fn new(path: String) -> Result<Itemstore, MizeError> {
         let ds = Datastore::new(&(String::from("file://") + &path[..] + "/db")[..]).await.expect("Could not open database");
 
-        let mut tr = ds.transaction(true, false).await.expect("creation of transaction failed");
+        let mut tr = ds.transaction(true, false).await?;
 
         match tr.get(vec!('0' as u8)).await {
             Ok(Some(val)) => println!("item 0 already created"),
             Ok(None) => {
                 let init = vec!["num_of_items".as_bytes().to_vec(), "next_free_id".as_bytes().to_vec()];
-                tr.set("0".to_string().into_bytes(), encode(init)).await;
+                tr.set("0".to_string().into_bytes(), encode(init)).await?;
                 let one: u64 = 1;
                 let zero: u64 = 0;
-                tr.set("0:num_of_items".to_string().into_bytes(), one.to_be_bytes()).await;
-                tr.set("0:next_free_id".to_string().into_bytes(), one.to_be_bytes()).await;
-                tr.set("0:_commit".to_string().into_bytes(), zero.to_be_bytes()).await;
-                tr.set("0:_type".to_string().into_bytes(), "mize-main".as_bytes().to_vec()).await;
-                tr.commit().await.expect("error commiting transaction in new function");
+                tr.set("0:num_of_items".to_string().into_bytes(), one.to_be_bytes()).await?;
+                tr.set("0:next_free_id".to_string().into_bytes(), one.to_be_bytes()).await?;
+                tr.set("0:_commit".to_string().into_bytes(), zero.to_be_bytes()).await?;
+                tr.set("0:_type".to_string().into_bytes(), "mize-main".as_bytes().to_vec()).await?;
+                tr.commit().await?;
             },
 
-            Err(e) => println!("Error while getting item index with id 0: {}", e)
+            Err(e) => {return Err(MizeError::from(e))},
         };
-        return Itemstore {db:ds};
+        return Ok(Itemstore {db:ds});
     }
 
-    pub async fn create(&self, item: Item) -> u64 {
+    pub async fn create(&self, item: Item) -> Result<u64, MizeError> {
+        let mut new_id:u64 = 0;
 
-        let mut tr = self.db.transaction(true, false).await.expect("creation of transaction failed");
+        let mut tr = self.db.transaction(true, false).await?;
         let id = tr.get("0:next_free_id").await
             .expect("no item with id 0 when there definetly should be one")
             .expect("error reading item 0 from db");
@@ -45,7 +49,7 @@ impl Itemstore {
 
         //set id:_commit
         let key = format!("{}:_commit", id_u64).into_bytes();
-        tr.set(key.clone(), vec![0,0,0,0,0,0,0,0]).await;
+        tr.set(key.clone(), vec![0,0,0,0,0,0,0,0]).await?;
         keys.push("_commit".to_owned().into_bytes());
 
 
@@ -55,112 +59,150 @@ impl Itemstore {
             keys.push(field[0].clone());
 
             let val = field[1].clone();
-            tr.set(key, val).await;
+            tr.set(key, val).await?;
         }
-        tr.set(format!("{}", id_u64), encode(keys)).await;
+        tr.set(format!("{}", id_u64), encode(keys)).await?;
 
         //increment 0:number_of_items by 1
-        let num = tr.get("0:num_of_items".to_string().into_bytes()).await
-            .expect("error getting \"0:num_of_items\"")
-            .expect("error reading item 0 from db");
-        let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
-        tr.set("0:num_of_items".to_string().into_bytes(), num_u64.to_be_bytes()).await;
+        let num_res = tr.get("0:num_of_items".to_string().into_bytes()).await?;
+        if let Some(num) = num_res {
+            let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
+            new_id = num_u64;
+            tr.set("0:num_of_items".to_string().into_bytes(), num_u64.to_be_bytes()).await?;
+        } else {
+            return Err(MizeError{
+                code: 101,
+                kind: "key-missing:item0".to_string(),
+                message: "The Item0 should have a key num_of_items, but that is not there.".to_string(),
+            });
+        }
 
         //imcrement next_free_id by 1
-        let num = tr.get("0:next_free_id".to_string().into_bytes()).await
-            .expect("error getting \"0:next_free_id\"")
-            .expect("error reading item 0 from db");
-        let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
-        tr.set("0:next_free_id".to_string().into_bytes(), num_u64.to_be_bytes()).await;
+        let num_res = tr.get("0:next_free_id".to_string().into_bytes()).await?;
+        if let Some(num) = num_res {
+            let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
+            tr.set("0:next_free_id".to_string().into_bytes(), num_u64.to_be_bytes()).await?;
+        } else {
+            return Err(MizeError{
+                code: 101,
+                kind: "key-missing:item0".to_string(),
+                message: "The Item0 should have a key next_free_id, but that is not there.".to_string(),
+            });
+        }
 
-        let res = tr.commit().await.expect("error commiting transaction in create function");
-        return u64::from_be_bytes([id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], ])
+        tr.commit().await?;
+        return Ok(new_id)
     }
 
-    pub async fn update(&self, id: u64, new_item: Item){
-        let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
+    pub async fn update(&self, id: u64, new_item: Item) -> Result<(), MizeError>{
+        let mut tr = self.db.transaction(true, true).await?;
 
-        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
-            Ok(Some(val)) => decode(val),
-            Ok(None) => {
-                tr.cancel();
-                self.create(new_item);
-                return;
-            },
-            Err(e) => panic!("Error while querying the db: {}", e),
-        };
+        let mut keys: Vec<Vec<u8>>  = Vec::new();
 
         for field in new_item {
             let mut key = format!("{}:", id).into_bytes();
             key.extend(field[0].clone());
             let val = field[1].clone();
             keys.push(field[0].clone());
-            tr.set(key, val).await;
+            tr.set(key, val).await?;
+        }
+
+        let keys_res = tr.get(format!("{}", id).into_bytes()).await?;
+        if let Some(old_keys) = keys_res {
+            keys.extend(decode(old_keys));
+            keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
+            tr.set(format!("{}", id).into_bytes(), encode(keys)).await?;
+        } else {
+            return Err(MizeError{
+                code: 104,
+                kind: "data_storage::index_not_found".to_string(),
+                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
+            });
         }
 
         //increment commit number
         let mut commit_key = format!("{}:_commit", id).into_bytes();
 
-        let mut commit_num: u64 = match tr.get(&*commit_key).await {
-            Ok(Some(val)) => u64::from_be_bytes(val.try_into().expect("error converting _commit num to u64")),
-            Ok(None) => {
-                panic!("item {} has no _commit", id);
-            },
-            Err(e) => panic!("Error while querying the db: {}", e),
-        };
-
-        commit_num += 1;
-        tr.set(commit_key, commit_num.to_be_bytes()).await;
-
-        keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
-        tr.set(format!("{}", id).into_bytes(), encode(keys)).await;
-
-        let res = tr.commit().await.expect("error commiting transaction in update function");
-    }
-
-    pub async fn delete(&self, id: u64){
-        let mut tr = self.db.transaction(true, true).await.expect("creation of transaction failed");
-
-        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
-            Ok(Some(val)) => decode(val),
-            Ok(None) => {
-                panic!("index of item {} not found", id);
-            },
-            Err(e) => panic!("Error while querying the db: {}", e),
-        };
-
-        for key in keys {
-            tr.del(key).await;
+        let commit_res = tr.get(&*commit_key).await?;
+        if let Some(commit_vec) = commit_res {
+            let val: [u8;8] = match commit_vec.try_into() {
+                Ok(val) => val,
+                Err(_) => {
+                    return Err(MizeError{
+                        code: 105,
+                        kind: "don't know yet".to_string(),
+                        message: "_commit of this item is no valid u64 (not 8 bytes long)".to_string(),
+                    });
+                },
+            };
+            let mut commit_num = u64::from_be_bytes(val);
+            commit_num += 1;
+            tr.set(commit_key, commit_num.to_be_bytes()).await?;
+        } else {
+            return Err(MizeError{
+                code: 103,
+                kind: "key_missing::_commit".to_string(),
+                message: "This item has no _commit key, which every item must have.".to_string(),
+            });
         }
-        tr.del(format!("{}", id)).await;
-        let res = tr.commit().await.expect("error commiting transaction in delete function");
+
+        tr.commit().await?;
+        return Ok(());
     }
 
-    pub async fn get(&self, id: u64) -> Item {
-        let mut tr = self.db.transaction(false, false).await.expect("creation of transaction failed");
+
+
+    pub async fn delete(&self, id: u64) -> Result<(), error::MizeError>{
+        let mut tr = self.db.transaction(true, true).await?;
+
+        let keys_res = tr.get(format!("{}", id).into_bytes()).await?;
+        if let Some(keys) = keys_res {
+            for key in decode(keys) {
+                tr.del(key).await?;
+            }
+        } else {
+            return Err(MizeError{
+                code: 104,
+                kind: "data_storage::index_not_found".to_string(),
+                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
+            });
+        }
+
+        tr.del(format!("{}", id)).await?;
+
+        tr.commit().await?;
+        return Ok(());
+    }
+
+
+
+    pub async fn get(&self, id: u64) -> Result<Item, MizeError> {
+        let mut tr = self.db.transaction(false, false).await?;
         let mut item: Item = Vec::new();
 
-        let mut keys: Vec<Vec<u8>> = match tr.get(format!("{}", id).into_bytes()).await {
-            Ok(Some(val)) => decode(val),
-            Ok(None) => {
-                panic!("index of item {} not found", id);
-            },
-            Err(e) => panic!("Error while querying the db: {}", e),
-        };
-
-        for key in keys {
-            let mut field: [Vec<u8>; 2] = [Vec::new(), Vec::new()];
-            field[0] = key.clone();
-            let mut ke = format!("{}:", id).into_bytes();
-            ke.extend(key.clone());
-            field[1] = match tr.get(ke).await {
-                Ok(Some(val)) => val,
-                Ok(None) => panic!("a field that should be there wasn't"),
-                Err(e) => panic!("Error while querying the db: {}", e),
+        let keys_res = tr.get(format!("{}", id).into_bytes()).await?;
+        if let Some(keys) = keys_res {
+            for key in decode(keys) {
+                let mut field: [Vec<u8>; 2] = [Vec::new(), Vec::new()];
+                field[0] = key.clone();
+                let mut ke = format!("{}:", id).into_bytes();
+                ke.extend(key.clone());
+                field[1] = match tr.get(ke).await {
+                    Ok(Some(val)) => val,
+                    Ok(None) => panic!("a field that should be there wasn't"),
+                    Err(e) => panic!("Error while querying the db: {}", e),
+                };
+                item.push(field);
             };
-            item.push(field);
+            return Ok(item);
+        } else {
+            return Err(MizeError{
+                code: 104,
+                kind: "data_storage::index_not_found".to_string(),
+                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
+            });
         }
-        return item;
+        return Ok(item);
     }
 }
 
