@@ -4,23 +4,25 @@ pub mod server_utils;
 pub mod itemstore;
 pub mod proto;
 
-use futures_util::{FutureExt, StreamExt};
+//use futures_util::lock::Mutex;
+use futures_util::{FutureExt, StreamExt, SinkExt};
 use warp::Filter;
 use warp::ws::{WebSocket, self};
+use std::collections::HashMap;
 
-use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio::sync::mpsc::{Sender, channel, Receiver};
+use tokio_stream::wrappers::ReceiverStream;
 use std::alloc::handle_alloc_error;
 use std::fs;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use crate::server::proto::{Response};
 use crate::server::proto::handle_mize_message;
 
 use self::itemstore::Itemstore;
 
 //static API_PATH_STRING: &str = "$api";
+static SOCKET_CHANNEL_SIZE: usize = 200;
 
 // max file sizez in the mize/data folder (in bytes)
 static MAX_INDEX_FILE_SIZE: usize = 1_800_000;
@@ -51,18 +53,58 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //static VERSION_MESSAGE: &str = "\
 //Version: 0
 //";
-//
 
+
+#[derive(Clone, Debug)]
 pub struct Client {
-    tx: UnboundedSender<Result<ws::Message, warp::Error>>
+//    rx: UnboundedReceiverStream<Result<ws::Message, warp::Error>>,
+    tx: Sender<proto::Message>,
+    id: u64,
 }
 
-pub fn run_server(args: Vec<String>) {
+#[derive(Clone, Debug)]
+pub struct Module {
+    tx: Sender<proto::Message>,
+    name: String,
+    client_id: u64,
+    //later
+    //registered_types: Vec<String>,
+}
+
+//pub struct Upstream maybe???? ... I'd say later....
+
+
+// A collection of all the things, that most functions need
+#[derive(Clone)]
+pub struct Mutexes {
+    next_free_client_id: Arc<Mutex<u64>>,
+    clients: Arc<Mutex<Vec<Client>>>,
+    modules: Arc<Mutex<Vec<Module>>>,
+    subs: Arc<Mutex<HashMap<String, Vec<proto::Origin>>>>,
+    //maybe a list of upstream servers??
+    itemstore: Arc<Mutex<Itemstore>>,
+}
+
+impl Mutexes {
+    pub fn clone(mutexes: &Mutexes) -> Mutexes {
+        Mutexes {
+            next_free_client_id: Arc::clone(&mutexes.next_free_client_id),
+            clients: Arc::clone(&mutexes.clients),
+            modules: Arc::clone(&mutexes.modules),
+            subs: Arc::clone(&mutexes.subs),
+            itemstore: Arc::clone(&mutexes.itemstore),
+        }
+    }
+}
+
+#[tokio::main]
+pub async fn run_server(args: Vec<String>) {
     /*
      * WHAT IT DOES
      *
      */
 
+    //
     //### get the mize_folder
     let mut mize_folder = String::new();
     for i in 1..args.len() {
@@ -74,13 +116,27 @@ pub fn run_server(args: Vec<String>) {
         }
     }
 
+    //create the itemstore
+    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
+
+    // A collection of all the things, that most functions need
+    let mutexes: Mutexes = Mutexes {
+        next_free_client_id: Arc::new(Mutex::new(0)),
+        clients: Arc::new(Mutex::new(Vec::new())),
+        subs: Arc::new(Mutex::new(HashMap::new())),
+        modules: Arc::new(Mutex::new(Vec::new())),
+        itemstore: Arc::new(Mutex::new(itemstore)),
+    };
+
+    //listen on the local unix socket
+    //local_socket_server(mize_folder);
+
     //run the webserver
-    warp_server(mize_folder);
+    warp_server(mize_folder, mutexes).await;
 }
 
 
-#[tokio::main]
-async fn warp_server(mize_folder: String) {
+async fn warp_server(mize_folder: String, mutexes: Mutexes) {
     /*
      *
      *
@@ -92,35 +148,30 @@ async fn warp_server(mize_folder: String) {
     //## $api/rest/
  
     // get itemstore
-    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder + "/db").await.expect("error creating itemstore");
 
-    let mut clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut itemstore_mutex: Arc<Mutex<Itemstore>> = Arc::new(Mutex::new(itemstore));
+    let mutexes_clone = Mutexes::clone(&mutexes);
 
     let socket_route = warp::path!("$api" / "socket")
         .and(warp::ws())
         .map(move |ws: warp::ws::Ws| {
-            let clients_clone = Arc::clone(&clients);
-            let itemstore_clone = Arc::clone(&itemstore_mutex);
-            ws.on_upgrade(move |socket| handle_socket_connection(
-                    socket,
-                    clients_clone,
-                    itemstore_clone
-                )
-            )
+            let mutexes_clone = Mutexes::clone(&mutexes_clone);
+            ws.on_upgrade(move |socket| handle_websocket_connection(socket, mutexes_clone))
     });
 
     let render_route = warp::path!("$api" / "render").map(move || "render route");
     let file_route = warp::path!("$api" / "file").map(move || "file route");
+
     //temporary
     let render_route = warp::path!("$api" / "render" / "first").map(move || {
         let answer = fs::read_to_string("/home/sebastian/work/mize/first-render/src/main.js").unwrap();
         warp::http::Response::builder().header("content-type", "text/javascript").body(answer)
     });
+
     let main_route = warp::path!("$api" / "client" / "main.js").map(move || {
         let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.js").unwrap();
         warp::http::Response::builder().header("content-type", "application/javascript").body(answer)
     });
+
     let defuatl_route = warp::path::full().map(|path|{
         //normally should be included in the binary, but for developing just gonna read the file
         //so I don't have to recompile all the time
@@ -144,54 +195,96 @@ async fn warp_server(mize_folder: String) {
     warp::serve(routes).run(([127, 0, 0, 1], 3000)).await;
 }
 
-async fn handle_socket_connection(
+async fn handle_websocket_connection(
     socket: WebSocket,
-    clients_clone: Arc<Mutex<Vec<Client>>>,
-    itemstore_clone: Arc<Mutex<Itemstore>>,
+    mutexes: Mutexes,
 ){
-    let (socket_tx, mut socket_rx) = socket.split();
-    let (client_tx, client_rx) = mpsc::unbounded_channel();
+    let (mut socket_tx, mut socket_rx) = socket.split();
+    let (msg_tx, msg_rx): (Sender<proto::Message>, Receiver<proto::Message>) = mpsc::channel(SOCKET_CHANNEL_SIZE);
 
-    let client_rx = UnboundedReceiverStream::new(client_rx);
-    tokio::spawn(client_rx.forward(socket_tx));
+    let mut msg_rx = ReceiverStream::new(msg_rx);
 
-    let mut cli = clients_clone.lock().await;
-    cli.push(Client{tx: client_tx.clone()});
+//    tokio::spawn(msg_rx.forward(socket_tx));
+
+    //my own forward
+    tokio::spawn(async move {
+        while let Some(msg) = msg_rx.next().await {
+            socket_tx.send(warp::ws::Message::binary(msg.raw)).await;
+        }
+    });
+
+    let mut cli = mutexes.clients.lock().await;
+    let mut client_id = mutexes.next_free_client_id.lock().await;
+    let client = Client{tx: msg_tx.clone(), id: *client_id};
+    cli.push(client.clone());
+    *client_id += 1;
     drop(cli);
+    drop(client_id);
 
     // Reading and broadcasting messages
     while let Some(result) = socket_rx.next().await {
-        println!("got message ==================================");
-        let msg = result.expect("Error when gettin message from WebSocket");
+        let msg = result.expect("Error when getting message from WebSocket");
+        println!("got message: {:?}", msg);
 
-        let itemstore = &*itemstore_clone.lock().await;
-        let responses = handle_mize_message(proto::Message::new(msg.clone().into_bytes()), itemstore).await;
-        for response in responses {
-            match response {
-                Response::One(response) => {
-                    client_tx.send(Ok(ws::Message::binary(response.clone()))).unwrap()
-                },
-                Response::All(response) => {
-                    send_to_all_clients(ws::Message::binary(response), clients_clone.clone()).await;
-                },
-                Response::AllSubbed(id, response) => {
-                    send_to_all_subed_clients(id, ws::Message::binary(response), clients_clone.clone()).await;
-                },
-                Response::None => {let t = 0;},
-            };
+        if let Err(err) = handle_mize_message(
+            proto::Message::from_bytes(msg.clone().into_bytes(),proto::Origin::Client(client.clone())), mutexes.clone(),
+        ).await {
+            msg_tx.send(err.to_message(proto::Origin::Client(client.clone()))).await;
         };
     };
 }
 
-pub async fn send_to_all_clients(message: ws::Message, clients_clone: Arc<Mutex<Vec<Client>>>){
-    let clients = clients_clone.lock().await;
-    for client in &clients[..] {
-        client.tx.send(Ok(ws::Message::binary(message.clone())));
-    }
-}
+//pub async fn handle_unix_socket_connection(){
+//}
 
-pub async fn send_to_all_subed_clients(id: u64, message: ws::Message, clients: Arc<Mutex<Vec<Client>>>){
-}
+//async fn handle_connection(con: Connection){
+//}
+
+//pub async fn send_to_all_clients(message: ws::Message, mutexes_clone: Mutexes){
+//    let clients = mutexes_clone.clients.lock().await;
+//    for client in &clients.clients[..] {
+//        client.tx.send(Ok(ws::Message::binary(message.clone())));
+//    }
+//    drop(clients);
+
+//    let modules = mutexes_clone.modules.lock().await;
+//    for module in &modules.modules[..] {
+//        module.tx.send(Ok(ws::Message::binary(message.clone())));
+//    }
+//}
+
+//pub async fn send_to_all_subbed_clients(id: String, message: ws::Message, mutexes_clone: Mutexes){
+//    let clients = mutexes_clone.clients.lock().await;
+//    for client in &clients.clients[..] {
+//        if client.sub.contains(&id) {
+//            client.tx.send(Ok(ws::Message::binary(message.clone())));
+//        }
+//    }
+
+//    let modules = mutexes_clone.modules.lock().await;
+//    for module in &modules.modules[..] {
+//        if module.sub.contains(&id) {
+//            module.tx.send(Ok(ws::Message::binary(message.clone())));
+//        }
+//    }
+//}
+
+//that does not work like this
+
+//impl From<proto::Message> for Result<warp::ws::Message, warp::Error> {
+//    fn from(msg: proto::Message) -> Result<warp::ws::Message, warp::Error> { 
+//        let msg = warp::ws::Message::binary(msg.raw);
+//    }
+//}
+
+//impl From<Result<warp::ws::Message, warp::Error>> for proto::Message {
+//    fn from(ws_msg: Result<warp::ws::Message, warp::Error>) -> proto::Message {
+//        let msg = ws_msg.expect("Error in From trait implementation: warp::ws::Messate to proto::Message");
+//    }
+//}
+//191 |     cli.push(Client{tx: client_tx, id: client_id});
+//    = note: expected struct `tokio::sync::mpsc::Sender<proto::Message>`
+//               found struct `tokio::sync::mpsc::Sender<`
 
 
 

@@ -5,7 +5,13 @@ use surrealdb::{Datastore, Key, Val};
 use itertools::Itertools;
 use crate::error;
 use crate::error::MizeError;
+use crate::server::proto;
 
+use super::proto::Delta;
+
+// The struct to do the storage and updates to it
+// is responsible, that no illegal states can occur in the storage, by using transactions
+// currently it's just a surrealdb Datastore. should be replaced by a completely custom File-System in the future.
 pub struct Itemstore {
     db: surrealdb::Datastore,
 }
@@ -94,57 +100,61 @@ impl Itemstore {
         return Ok(new_id)
     }
 
-    pub async fn update(&self, id: u64, new_item: Item) -> Result<(), MizeError>{
+    pub async fn update(&self, update: proto::Update) -> Result<(), MizeError>{
+
         let mut tr = self.db.transaction(true, true).await?;
 
-        let mut keys: Vec<Vec<u8>>  = Vec::new();
+        let old_item_index = tr.get(update.id.clone().into_bytes()).await?;
+        let old_item = for key in old_item_index {
+            let mut key_get = format!("{}:", update.id).into_bytes();
+            key_get.extend(key.clone());
+            tr.get(key_get);
+        };
 
-        for field in new_item {
-            let mut key = format!("{}:", id).into_bytes();
-            key.extend(field[0].clone());
-            let val = field[1].clone();
-            keys.push(field[0].clone());
-            tr.set(key, val).await?;
+        let mut keys: Vec<Vec<u8>> = Vec::new();
+
+        //check the _type of the item and maybe run type-code
+        //TODO: typecode
+
+        //read keys
+        let mut keys = match tr.get(format!("{}", update.id).into_bytes()).await? {
+            Some(keys) => decode(keys),
+            None => {
+                return Err(MizeError{
+                    code: 104,
+                    kind: "data_storage::index_not_found".to_string(),
+                    message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
+                });
+            },
+        };
+
+        //write new values
+        for (mut key, delta) in update.raw {
+            let mut store_key = (update.id.clone() + ":").into_bytes();
+            store_key.append(&mut key);
+            let mut new_val = Vec::new();
+
+            if let Some(old_val) = tr.get(store_key.clone()).await? {
+                new_val = proto::apply_delta(old_val, delta)?;
+                tr.set(store_key.clone(), new_val.clone()).await?;
+            } else {
+                keys.push(key.clone());
+                new_val = proto::apply_delta(Vec::new(), delta)?;
+            }
+
+            //remove field if new_val is empty
+            if (new_val.len() == 0) {
+                if let Some(key_index) = keys.iter().position(|x| *x == key.clone()){
+                    keys.remove(key_index);
+                }
+                tr.del(key).await?;
+            } else {
+                tr.set(store_key.clone(), new_val).await?;
+            }
         }
 
-        let keys_res = tr.get(format!("{}", id).into_bytes()).await?;
-        if let Some(old_keys) = keys_res {
-            keys.extend(decode(old_keys));
-            keys = keys.into_iter().unique().collect::<Vec<Vec<u8>>>();
-            tr.set(format!("{}", id).into_bytes(), encode(keys)).await?;
-        } else {
-            return Err(MizeError{
-                code: 104,
-                kind: "data_storage::index_not_found".to_string(),
-                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
-            });
-        }
-
-        //increment commit number
-        let mut commit_key = format!("{}:_commit", id).into_bytes();
-
-        let commit_res = tr.get(&*commit_key).await?;
-        if let Some(commit_vec) = commit_res {
-            let val: [u8;8] = match commit_vec.try_into() {
-                Ok(val) => val,
-                Err(_) => {
-                    return Err(MizeError{
-                        code: 105,
-                        kind: "don't know yet".to_string(),
-                        message: "_commit of this item is no valid u64 (not 8 bytes long)".to_string(),
-                    });
-                },
-            };
-            let mut commit_num = u64::from_be_bytes(val);
-            commit_num += 1;
-            tr.set(commit_key, commit_num.to_be_bytes()).await?;
-        } else {
-            return Err(MizeError{
-                code: 103,
-                kind: "key_missing::_commit".to_string(),
-                message: "This item has no _commit key, which every item must have.".to_string(),
-            });
-        }
+        //write keys again
+        tr.set(update.id.into_bytes(), encode(keys)).await?;
 
         tr.commit().await?;
         return Ok(());
@@ -152,10 +162,21 @@ impl Itemstore {
 
 
 
-    pub async fn delete(&self, id: u64) -> Result<(), error::MizeError>{
+    pub async fn delete(&self, id_str: String) -> Result<(), error::MizeError>{
+        let id_u64: u64 = match id_str.parse() {
+            Ok(id) => id,
+            Err(err) => {
+                return Err(MizeError {
+                    code: 110,
+                    kind: "faulty_message".to_string(),
+                    message: format!("std::num::ParseIntError while parsing id \"{}\" into an Integer", id_str),
+
+                });
+            }
+        };
         let mut tr = self.db.transaction(true, true).await?;
 
-        let keys_res = tr.get(format!("{}", id).into_bytes()).await?;
+        let keys_res = tr.get(format!("{}", id_u64).into_bytes()).await?;
         if let Some(keys) = keys_res {
             for key in decode(keys) {
                 tr.del(key).await?;
@@ -168,7 +189,7 @@ impl Itemstore {
             });
         }
 
-        tr.del(format!("{}", id)).await?;
+        tr.del(id_str.into_bytes()).await?;
 
         tr.commit().await?;
         return Ok(());

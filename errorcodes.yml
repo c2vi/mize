@@ -1,3 +1,6 @@
+Not sure yet:
+  code: 11
+  category: "don't know yet"
 
 Can't delete item 0:
   code: 100
@@ -31,3 +34,32 @@ could not read index of item:
 _commit not 8 bytes long:
   code: 105
   category: "don't know yet"
+
+error while parsing int:
+  code: 106
+  category: "parse_error"
+
+error with message sent to the server:
+  code: 107
+  category: "faulty_message"
+
+missing metadata:
+  code: 108
+  category: "faulty_message"
+
+something that should be utf8 valid was not:
+  code: 109
+  category: "faulty_message"
+
+ParseIntError:
+  code: 110
+  category: "faulty_message"
+
+_commit can't be updated:
+  code: 111
+  category: "faulty_update"
+
+no / on the end of id:
+  code: 112
+  category: "faulty_message"
+
