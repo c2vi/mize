@@ -185,15 +185,11 @@ pub async fn run_server(args: Vec<String>) {
                     toml::Value::String(val) => val,
                     _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
                 };
-                let folder = match render.get("folder").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
-                    toml::Value::String(val) => val,
-                    _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
-                };
 
                 let webroot = webroot.clone();
                 let main = main.clone();
                 let id = id.clone();
-                let folder = folder.clone();
+                let folder = format!("{:?}", ren_mod.file_name());
 
                 renders.push(Render {id, webroot, main, folder});
             };
