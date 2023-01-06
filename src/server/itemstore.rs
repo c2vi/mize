@@ -27,14 +27,26 @@ impl Itemstore {
         match tr.get(vec!('0' as u8)).await {
             Ok(Some(val)) => println!("item 0 already created"),
             Ok(None) => {
-                let init = vec!["num_of_items".as_bytes().to_vec(), "next_free_id".as_bytes().to_vec()];
-                tr.set("0".to_string().into_bytes(), encode(init)).await?;
+                let keys = vec![
+                    "num_of_items".as_bytes().to_vec(),
+                    "next_free_id".as_bytes().to_vec(),
+                    "_commit".as_bytes().to_vec(),
+                    "_type".as_bytes().to_vec(),
+                    "renders".as_bytes().to_vec(),
+                    "modules".as_bytes().to_vec(),
+                ];
+
+                tr.set("0".to_string().into_bytes(), encode(keys)).await?;
                 let one: u64 = 1;
                 let zero: u64 = 0;
+
                 tr.set("0:num_of_items".to_string().into_bytes(), one.to_be_bytes()).await?;
                 tr.set("0:next_free_id".to_string().into_bytes(), one.to_be_bytes()).await?;
                 tr.set("0:_commit".to_string().into_bytes(), zero.to_be_bytes()).await?;
                 tr.set("0:_type".to_string().into_bytes(), "mize-main".as_bytes().to_vec()).await?;
+                tr.set("0:renders".to_string().into_bytes(), Vec::new());
+                tr.set("0:modules".to_string().into_bytes(), Vec::new());
+
                 tr.commit().await?;
             },
 
@@ -69,33 +81,6 @@ impl Itemstore {
         }
         tr.set(format!("{}", id_u64), encode(keys)).await?;
 
-        //increment 0:number_of_items by 1
-        let num_res = tr.get("0:num_of_items".to_string().into_bytes()).await?;
-        if let Some(num) = num_res {
-            let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
-            new_id = num_u64;
-            tr.set("0:num_of_items".to_string().into_bytes(), num_u64.to_be_bytes()).await?;
-        } else {
-            return Err(MizeError{
-                code: 101,
-                kind: "key-missing:item0".to_string(),
-                message: "The Item0 should have a key num_of_items, but that is not there.".to_string(),
-            });
-        }
-
-        //imcrement next_free_id by 1
-        let num_res = tr.get("0:next_free_id".to_string().into_bytes()).await?;
-        if let Some(num) = num_res {
-            let mut num_u64 = u64::from_be_bytes([num[0], num[1], num[2], num[3], num[4], num[5], num[6], num[7]]) +1;
-            tr.set("0:next_free_id".to_string().into_bytes(), num_u64.to_be_bytes()).await?;
-        } else {
-            return Err(MizeError{
-                code: 101,
-                kind: "key-missing:item0".to_string(),
-                message: "The Item0 should have a key next_free_id, but that is not there.".to_string(),
-            });
-        }
-
         tr.commit().await?;
         return Ok(new_id)
     }
@@ -112,9 +97,6 @@ impl Itemstore {
         };
 
         let mut keys: Vec<Vec<u8>> = Vec::new();
-
-        //check the _type of the item and maybe run type-code
-        //TODO: typecode
 
         //read keys
         let mut keys = match tr.get(format!("{}", update.id).into_bytes()).await? {

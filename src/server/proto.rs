@@ -80,7 +80,7 @@ pub struct Message {
 //    None,
 //}
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Origin {
     Client(server::Client), //the client id
     Module(server::Module), //Module_name
@@ -674,6 +674,7 @@ pub async fn handle_mize_message(
             Err(err) => {return Err(err);},
             Ok(item) => {item0 = item;},
         }
+        println!("got create message");
 
         //update item0
         let mut next_free_id: Vec<u8> = Vec::new();
@@ -720,6 +721,7 @@ pub async fn handle_update(mut update: Update, mutexes: Mutexes, origin: Origin)
     //and either call itemstore.update(), send the update to the module or upstream, or spawn another
     //update by calling handle_update()
     
+    println!("handle_update");
 
     ///////////////////////////////// TYPE CODE ////////////////////////////////////////
     //can change the update and spawn new updates (to a different item) (which would call the handle_update func again)

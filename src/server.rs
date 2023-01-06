@@ -6,20 +6,33 @@ pub mod proto;
 
 //use futures_util::lock::Mutex;
 use futures_util::{FutureExt, StreamExt, SinkExt};
-use warp::Filter;
-use warp::ws::{WebSocket, self};
 use std::collections::HashMap;
+use std::boxed::Box;
+use std::path::Path;
+use crate::error::MizeError;
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
 use tokio_stream::wrappers::ReceiverStream;
 use std::alloc::handle_alloc_error;
 use std::fs;
-use std::sync::{Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use crate::server::proto::handle_mize_message;
 
 use self::itemstore::Itemstore;
+
+use axum_extra::routing::SpaRouter;
+use axum::Router;
+use axum::routing::{get, get_service};
+use std::net::SocketAddr;
+use axum::response::{IntoResponse, Html};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{State, self};
+use axum::http::{StatusCode, Uri, Response, self};
+use tower_http::services::{ServeDir, ServeFile};
+
+
 
 //static API_PATH_STRING: &str = "$api";
 static SOCKET_CHANNEL_SIZE: usize = 200;
@@ -55,20 +68,35 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //";
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Client {
 //    rx: UnboundedReceiverStream<Result<ws::Message, warp::Error>>,
     tx: Sender<proto::Message>,
     id: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Module {
     tx: Sender<proto::Message>,
     name: String,
     client_id: u64,
-    //later
-    //registered_types: Vec<String>,
+    kind: ModuleKind,
+    registered_types: Vec<String>,
+}
+
+#[derive(Clone)]
+pub enum ModuleKind {
+    Binary(),
+    Python(),
+    Node(),
+}
+
+#[derive(Clone)]
+pub struct Render {
+    id: String,
+    webroot: String,
+    main: String,
+    folder: String,
 }
 
 //pub struct Upstream maybe???? ... I'd say later....
@@ -81,8 +109,10 @@ pub struct Mutexes {
     clients: Arc<Mutex<Vec<Client>>>,
     modules: Arc<Mutex<Vec<Module>>>,
     subs: Arc<Mutex<HashMap<String, Vec<proto::Origin>>>>,
+    renders: Arc<Mutex<Vec<Render>>>,
     //maybe a list of upstream servers??
     itemstore: Arc<Mutex<Itemstore>>,
+    mize_folder: String,
 }
 
 impl Mutexes {
@@ -91,7 +121,9 @@ impl Mutexes {
             next_free_client_id: Arc::clone(&mutexes.next_free_client_id),
             clients: Arc::clone(&mutexes.clients),
             modules: Arc::clone(&mutexes.modules),
+            renders: Arc::clone(&mutexes.renders),
             subs: Arc::clone(&mutexes.subs),
+            mize_folder: mutexes.mize_folder.clone(),
             itemstore: Arc::clone(&mutexes.itemstore),
         }
     }
@@ -119,24 +151,79 @@ pub async fn run_server(args: Vec<String>) {
     //create the itemstore
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
-    // A collection of all the things, that most functions need
+    //load modules and renders
+    let ren_mods = std::fs::read_dir(mize_folder.clone() + "/modules-renders")
+        .expect("error reading the modules-renders dir in the mize-folder")
+        .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+    
+    let mut renders: Vec<Render> = Vec::new();
+
+    for ren_mod in ren_mods {
+        let ren_mod = ren_mod.unwrap();
+        if let Ok(toml_string) = fs::read_to_string(format!("{}/mize.toml", ren_mod.path().display())){
+            let data = toml_string.parse::<toml::Value>()
+                .expect(&format!("error while parsing the mize.toml file in {}", ren_mod.path().display()));
+
+            //set renders
+            let render_arr = match data.get("render").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
+                toml::Value::Array(arr) => arr,
+                _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
+            };
+
+            for render in render_arr {
+                let id = match render.get("id").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
+                    toml::Value::String(val) => val,
+                    _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
+                };
+
+                let webroot = match render.get("webroot").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
+                    toml::Value::String(val) => val,
+                    _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
+                };
+
+                let main = match render.get("main").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
+                    toml::Value::String(val) => val,
+                    _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
+                };
+                let folder = match render.get("folder").expect(&format!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())) {
+                    toml::Value::String(val) => val,
+                    _ => {panic!("something wrong in the mize.toml file in {:?}", ren_mod.file_name())}
+                };
+
+                let webroot = webroot.clone();
+                let main = main.clone();
+                let id = id.clone();
+                let folder = folder.clone();
+
+                renders.push(Render {id, webroot, main, folder});
+            };
+
+            //set modules
+            //later...
+        }
+    }
+
+
+    // Collection of all the things, that most functions need
     let mutexes: Mutexes = Mutexes {
         next_free_client_id: Arc::new(Mutex::new(0)),
         clients: Arc::new(Mutex::new(Vec::new())),
         subs: Arc::new(Mutex::new(HashMap::new())),
         modules: Arc::new(Mutex::new(Vec::new())),
+        renders: Arc::new(Mutex::new(renders)),
         itemstore: Arc::new(Mutex::new(itemstore)),
+        mize_folder: mize_folder.clone(),
     };
 
     //listen on the local unix socket
     //local_socket_server(mize_folder);
 
     //run the webserver
-    warp_server(mize_folder, mutexes).await;
+    axum_server(mize_folder, mutexes).await;
 }
 
 
-async fn warp_server(mize_folder: String, mutexes: Mutexes) {
+async fn axum_server(mize_folder: String, mutexes: Mutexes) {
     /*
      *
      *
@@ -147,52 +234,70 @@ async fn warp_server(mize_folder: String, mutexes: Mutexes) {
     //## $api/socket/id
     //## $api/rest/
  
-    // get itemstore
+
 
     let mutexes_clone = Mutexes::clone(&mutexes);
 
-    let socket_route = warp::path!("$api" / "socket")
-        .and(warp::ws())
-        .map(move |ws: warp::ws::Ws| {
-            let mutexes_clone = Mutexes::clone(&mutexes_clone);
-            ws.on_upgrade(move |socket| handle_websocket_connection(socket, mutexes_clone))
-    });
+    let serve_client = get_service(ServeDir::new("js-client/src")).handle_error(handle_error);
 
-    let render_route = warp::path!("$api" / "render").map(move || "render route");
-    let file_route = warp::path!("$api" / "file").map(move || "file route");
+    let mut app = Router::new()
+        .route("/==api==/socket", get(websocket_handler))
+        .route("/==api==/render/:id", get(get_render_main))
+//        .route("/$api/file", get(get_file_handler))
+//        .merge(SpaRouter::new("/$api/client", "js-client/src").index_file("main.html"))
+        .nest_service("/==api==/client", serve_client)
+        .with_state(mutexes.clone())
+        .fallback(render_item);
 
-    //temporary
-    let render_route = warp::path!("$api" / "render" / "first").map(move || {
-        let answer = fs::read_to_string("/home/sebastian/work/mize/first-render/src/main.js").unwrap();
-        warp::http::Response::builder().header("content-type", "text/javascript").body(answer)
-    });
+    let renders = mutexes.renders.lock().await;
 
-    let main_route = warp::path!("$api" / "client" / "main.js").map(move || {
-        let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.js").unwrap();
-        warp::http::Response::builder().header("content-type", "application/javascript").body(answer)
-    });
+    for render in &*renders {
+        let url_path = String::from("/==api==/render/webroot/") + &render.id + "/";
+        let file_path = render.webroot.clone();
+        let serve_dir = get_service(ServeDir::new(&file_path)).handle_error(handle_error);
 
-    let defuatl_route = warp::path::full().map(|path|{
-        //normally should be included in the binary, but for developing just gonna read the file
-        //so I don't have to recompile all the time
-        //let answer = include_str!("../js-client/src/main.html");
-        let answer = fs::read_to_string("/home/sebastian/work/mize/js-client/src/main.html").unwrap();
-        warp::http::Response::builder().body(answer)
-    });
-    
-    //let routes = warp::get().and(socket_route).or(render_route).or(file_route).map(move |hi| "default");
-    let routes = warp::get().and(
-        
-        render_route
-            .or(file_route)
-            .or(socket_route)
-            .or(main_route)
-            .or(defuatl_route)
-            //.or(sum)
-            //.or(times),
-    );
-       
-    warp::serve(routes).run(([127, 0, 0, 1], 3000)).await;
+        app = app.nest_service(&url_path, serve_dir);
+    }
+    drop(renders);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+//    tracing::debug!("listening on {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+
+}
+
+async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
+        (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+}
+
+async fn render_item(uri: Uri) -> impl IntoResponse {
+    Html(fs::read_to_string("js-client/src/main.html").unwrap())
+}
+
+//#[axum_macros::debug_handler]
+async fn get_render_main(extract::Path(id): extract::Path<String>, State(mutexes): State<Mutexes>) -> http::Response<String> {
+    let renders = &*mutexes.renders.lock().await;
+
+    let render = renders.iter().filter(|&render| render.id == id).nth(0)
+        .unwrap_or(renders.iter().filter(|&render| render.id == "first").nth(0).expect("there is no first render"));
+
+    let file_name = mutexes.mize_folder.clone() + "/modules-renders/" + &render.folder + "/" + &render.main;
+    println!("file_name: {}", file_name);
+
+    Response::builder()
+        .header("content-type", "application/javascript")
+        .status(StatusCode::OK)
+        .body(fs::read_to_string(file_name).unwrap()).unwrap()
+}
+
+async fn websocket_handler(
+        ws: WebSocketUpgrade,
+            State(mutexes): State<Mutexes>,
+) -> impl IntoResponse {
+        ws.on_upgrade(|socket| handle_websocket_connection(socket, mutexes))
 }
 
 async fn handle_websocket_connection(
@@ -204,12 +309,10 @@ async fn handle_websocket_connection(
 
     let mut msg_rx = ReceiverStream::new(msg_rx);
 
-//    tokio::spawn(msg_rx.forward(socket_tx));
-
     //my own forward
     tokio::spawn(async move {
         while let Some(msg) = msg_rx.next().await {
-            socket_tx.send(warp::ws::Message::binary(msg.raw)).await;
+            socket_tx.send(Message::Binary(msg.raw)).await;
         }
     });
 
@@ -226,65 +329,26 @@ async fn handle_websocket_connection(
         let msg = result.expect("Error when getting message from WebSocket");
         println!("got message: {:?}", msg);
 
+        let bytes = match msg {
+            Message::Binary(b) => b,
+            _ => {
+                let err = MizeError{
+                    code: 11,
+                    kind: "don't know yet".to_string(),
+                    message: "the message type was not Binary".to_string(),
+                };
+                msg_tx.send(err.to_message(proto::Origin::Client(client.clone()))).await;
+                vec![0]
+            },
+        };
+
         if let Err(err) = handle_mize_message(
-            proto::Message::from_bytes(msg.clone().into_bytes(),proto::Origin::Client(client.clone())), mutexes.clone(),
+            proto::Message::from_bytes(bytes, proto::Origin::Client(client.clone())), mutexes.clone(),
         ).await {
             msg_tx.send(err.to_message(proto::Origin::Client(client.clone()))).await;
         };
     };
 }
-
-//pub async fn handle_unix_socket_connection(){
-//}
-
-//async fn handle_connection(con: Connection){
-//}
-
-//pub async fn send_to_all_clients(message: ws::Message, mutexes_clone: Mutexes){
-//    let clients = mutexes_clone.clients.lock().await;
-//    for client in &clients.clients[..] {
-//        client.tx.send(Ok(ws::Message::binary(message.clone())));
-//    }
-//    drop(clients);
-
-//    let modules = mutexes_clone.modules.lock().await;
-//    for module in &modules.modules[..] {
-//        module.tx.send(Ok(ws::Message::binary(message.clone())));
-//    }
-//}
-
-//pub async fn send_to_all_subbed_clients(id: String, message: ws::Message, mutexes_clone: Mutexes){
-//    let clients = mutexes_clone.clients.lock().await;
-//    for client in &clients.clients[..] {
-//        if client.sub.contains(&id) {
-//            client.tx.send(Ok(ws::Message::binary(message.clone())));
-//        }
-//    }
-
-//    let modules = mutexes_clone.modules.lock().await;
-//    for module in &modules.modules[..] {
-//        if module.sub.contains(&id) {
-//            module.tx.send(Ok(ws::Message::binary(message.clone())));
-//        }
-//    }
-//}
-
-//that does not work like this
-
-//impl From<proto::Message> for Result<warp::ws::Message, warp::Error> {
-//    fn from(msg: proto::Message) -> Result<warp::ws::Message, warp::Error> { 
-//        let msg = warp::ws::Message::binary(msg.raw);
-//    }
-//}
-
-//impl From<Result<warp::ws::Message, warp::Error>> for proto::Message {
-//    fn from(ws_msg: Result<warp::ws::Message, warp::Error>) -> proto::Message {
-//        let msg = ws_msg.expect("Error in From trait implementation: warp::ws::Messate to proto::Message");
-//    }
-//}
-//191 |     cli.push(Client{tx: client_tx, id: client_id});
-//    = note: expected struct `tokio::sync::mpsc::Sender<proto::Message>`
-//               found struct `tokio::sync::mpsc::Sender<`
 
 
 
