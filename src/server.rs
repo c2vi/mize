@@ -91,7 +91,7 @@ pub enum ModuleKind {
     Node(),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Render {
     id: String,
     webroot: String,
@@ -189,7 +189,7 @@ pub async fn run_server(args: Vec<String>) {
                 let webroot = webroot.clone();
                 let main = main.clone();
                 let id = id.clone();
-                let folder = format!("{:?}", ren_mod.file_name());
+                let folder = format!("{}", ren_mod.file_name().into_string().expect("filename has non utf8 chars in it......"));
 
                 renders.push(Render {id, webroot, main, folder});
             };
@@ -276,10 +276,12 @@ async fn render_item(uri: Uri) -> impl IntoResponse {
 //#[axum_macros::debug_handler]
 async fn get_render_main(extract::Path(id): extract::Path<String>, State(mutexes): State<Mutexes>) -> http::Response<String> {
     let renders = &*mutexes.renders.lock().await;
+    println!("Render {:?}", renders);
 
     let render = renders.iter().filter(|&render| render.id == id).nth(0)
         .unwrap_or(renders.iter().filter(|&render| render.id == "first").nth(0).expect("there is no first render"));
 
+    println!("Render: {:?}", render);
     let file_name = mutexes.mize_folder.clone() + "/modules-renders/" + &render.folder + "/" + &render.main;
     println!("file_name: {}", file_name);
 
