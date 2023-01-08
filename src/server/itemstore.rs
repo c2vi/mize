@@ -32,8 +32,8 @@ impl Itemstore {
                     "next_free_id".as_bytes().to_vec(),
                     "_commit".as_bytes().to_vec(),
                     "_type".as_bytes().to_vec(),
-                    "renders".as_bytes().to_vec(),
-                    "modules".as_bytes().to_vec(),
+                    //"renders".as_bytes().to_vec(),
+                    //"modules".as_bytes().to_vec(),
                 ];
 
                 tr.set("0".to_string().into_bytes(), encode(keys)).await?;
@@ -44,8 +44,8 @@ impl Itemstore {
                 tr.set("0:next_free_id".to_string().into_bytes(), one.to_be_bytes()).await?;
                 tr.set("0:_commit".to_string().into_bytes(), zero.to_be_bytes()).await?;
                 tr.set("0:_type".to_string().into_bytes(), "mize-main".as_bytes().to_vec()).await?;
-                tr.set("0:renders".to_string().into_bytes(), Vec::new());
-                tr.set("0:modules".to_string().into_bytes(), Vec::new());
+                //tr.set("0:renders".to_string().into_bytes(), Vec::new());
+                //tr.set("0:modules".to_string().into_bytes(), Vec::new());
 
                 tr.commit().await?;
             },
@@ -167,7 +167,7 @@ impl Itemstore {
             return Err(MizeError{
                 code: 104,
                 kind: "data_storage::index_not_found".to_string(),
-                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
+                message: "Internal Datastorage Error: the Index of the Item was not found, This means most likely that this item does not exist.".to_string(),
             });
         }
 
