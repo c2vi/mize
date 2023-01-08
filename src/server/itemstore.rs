@@ -86,20 +86,12 @@ impl Itemstore {
     }
 
     pub async fn update(&self, update: proto::Update) -> Result<(), MizeError>{
+        println!("itemstore.update func");
 
         let mut tr = self.db.transaction(true, true).await?;
 
-        let old_item_index = tr.get(update.id.clone().into_bytes()).await?;
-        let old_item = for key in old_item_index {
-            let mut key_get = format!("{}:", update.id).into_bytes();
-            key_get.extend(key.clone());
-            tr.get(key_get);
-        };
-
-        let mut keys: Vec<Vec<u8>> = Vec::new();
-
         //read keys
-        let mut keys = match tr.get(format!("{}", update.id).into_bytes()).await? {
+        let mut old_keys = match tr.get(format!("{}", update.id).into_bytes()).await? {
             Some(keys) => decode(keys),
             None => {
                 return Err(MizeError{
@@ -112,31 +104,34 @@ impl Itemstore {
 
         //write new values
         for (mut key, delta) in update.raw {
+
             let mut store_key = (update.id.clone() + ":").into_bytes();
-            store_key.append(&mut key);
+            store_key.extend(key.clone());
+
             let mut new_val = Vec::new();
 
             if let Some(old_val) = tr.get(store_key.clone()).await? {
                 new_val = proto::apply_delta(old_val, delta)?;
                 tr.set(store_key.clone(), new_val.clone()).await?;
             } else {
-                keys.push(key.clone());
+                old_keys.push(key.clone());
                 new_val = proto::apply_delta(Vec::new(), delta)?;
+                tr.set(store_key.clone(), new_val.clone()).await?;
             }
 
             //remove field if new_val is empty
-            if (new_val.len() == 0) {
-                if let Some(key_index) = keys.iter().position(|x| *x == key.clone()){
-                    keys.remove(key_index);
-                }
-                tr.del(key).await?;
-            } else {
-                tr.set(store_key.clone(), new_val).await?;
-            }
+            //if (new_val.len() == 0) {
+                //if let Some(key_index) = keys.iter().position(|x| *x == key.clone()){
+                    //keys.remove(key_index);
+                //}
+                //tr.del(key).await?;
+            //} else {
+                //tr.set(store_key.clone(), new_val).await?;
+            //}
         }
 
         //write keys again
-        tr.set(update.id.into_bytes(), encode(keys)).await?;
+        tr.set(update.id.into_bytes(), encode(old_keys)).await?;
 
         tr.commit().await?;
         return Ok(());

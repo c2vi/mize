@@ -627,6 +627,7 @@ pub async fn handle_mize_message(
         }
 
         let update = Update::from_message(message.clone())?;
+        println!("UPDATE: {:?}", update.raw);
         handle_update(update, mutexes, message.origin.clone()).await?;
         return Ok(());
     };
