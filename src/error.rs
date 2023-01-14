@@ -4,7 +4,7 @@ use std::string::FromUtf8Error;
 use json;
 use crate::server::proto;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MizeError {
     pub kind: String,
     pub code: u32,

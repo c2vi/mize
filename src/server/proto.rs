@@ -62,7 +62,7 @@ use tokio::sync::{Mutex, mpsc};
 use crate::server;
 use crate::error::MizeError;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
     pub raw: Vec<u8>,
     version: u8,
@@ -70,6 +70,7 @@ pub struct Message {
     origin: Origin,
     index: usize,
     meta_gotten: bool,
+    has_meta: bool,
     id: Option<String>,
 }
 
@@ -80,7 +81,7 @@ pub struct Message {
 //    None,
 //}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Origin {
     Client(server::Client), //the client id
     Module(server::Module), //Module_name
@@ -278,8 +279,11 @@ impl Message {
 
             if count == 2 {break};
         };
+        
+        let mut has_meta = false;
+        if (cmd >= 128) {cmd = cmd - 128; has_meta = true}
 
-        Message { raw: vec, version, cmd, index: 2 , origin, meta_gotten: false, id: None}
+        Message { raw: vec, version, cmd, index: 2 , origin, meta_gotten: false, id: None, has_meta}
     }
     pub async fn send(self, origin: &Origin) {
         origin.send(self).await;
@@ -289,6 +293,11 @@ impl Message {
         let mut meta: HashMap<String, String> = HashMap::new();
         meta.insert("c".to_string(), format!("{}", self.origin.get_id()));
         self.set_metadata(meta)?;
+
+        //add 128 to the cmd
+        self.raw[1] = self.raw[1] + 128;
+
+
         let mut id_iter = id.chars();
         //scip the first "!"
         id_iter.next();
@@ -297,7 +306,7 @@ impl Message {
         let modules = mutexes.modules.lock().await;
         for module in &*modules {
             if (module.name == mod_name) {
-                self.send(&Origin::Module(module.clone()));
+                self.send(&Origin::Module(module.clone())).await;
                 return Ok(());
             }
         }
@@ -371,11 +380,11 @@ impl Message {
 
         for (mut key, mut val) in metadata.iter(){
             meta_vec.append(&mut key.clone().into_bytes());
-            meta_vec.push(';' as u8);
+            meta_vec.push('=' as u8);
             meta_vec.append(&mut val.clone().into_bytes());
-            meta_vec.push('/' as u8);
+            meta_vec.push(';' as u8);
         }
-        meta_vec.remove(meta_vec.len());
+        //meta_vec.remove(meta_vec.len());
         meta_vec.push('}' as u8);
 
         self.raw.splice(2..2, meta_vec);
@@ -383,7 +392,7 @@ impl Message {
     }
 
     pub fn get_metadata(&mut self) -> Result<HashMap<String, String>, MizeError> {
-        if !self.has_metadata() {
+        if !self.has_meta {
             return Err(MizeError {
                 code: 108,
                 kind: "faulty_message".to_string(),
@@ -391,33 +400,37 @@ impl Message {
             })
         };
 
+        let meta_err = MizeError {
+            code: 107,
+            kind: "faulty_message".to_string(),
+            message: "Error while parsing the metadata of a message.".to_string(),
+        };
+
         let mut meta_vec:Vec<u8> = Vec::new();
         let mut msg_iter = self.raw[self.index..].iter();
 
         if (msg_iter.nth(0).unwrap() != &('{' as u8)){
-            return Err(MizeError {
-                code: 107,
-                kind: "faulty_message".to_string(),
-                message: "Error while parsing the metadata of a message.".to_string(),
-            })
+            return Err(meta_err);
         };
 
         for ch in msg_iter {
-            meta_vec.push(*ch);
 
             if (ch == &('}' as u8)){
                 let mut map: HashMap<String, String> = HashMap::new();
                 let string = String::from_utf8(meta_vec)?;
-                let sp: Vec<&str> = string.split("/").collect();
+                let sp: Vec<&str> = string.split(";").collect();
+
                 for st in sp.clone() {
-                    let mut split = sp.split(|c| *c == ";");
-                    let key = split.nth(0).unwrap()[0];
-                    let val = split.nth(1).unwrap()[0];
+                    if (st == ""){continue;}
+                    let mut split = st.split("=").collect::<Vec<&str>>();
+                    let key = split.clone().into_iter().nth(0).ok_or(meta_err.clone())?;
+                    let val = split.into_iter().nth(1).ok_or(meta_err.clone())?;
                     map.insert(key.to_string(), val.to_string());
                 }
                 self.meta_gotten = true;
                 return Ok(map);
             }
+            meta_vec.push(*ch);
         };
 
         return Err(MizeError {
@@ -428,16 +441,12 @@ impl Message {
 
     }
 
-    pub fn has_metadata(&mut self) -> bool {
-        self.cmd >= 128
-    }
-
     pub fn get_id(&mut self) -> Result<String, MizeError> {
         //get the metadata just to increment the index
         if let Some(id) = &self.id {
             return Ok(id.clone());
         }
-        if (self.has_metadata() && !self.meta_gotten){
+        if (self.has_meta && !self.meta_gotten){
             self.get_metadata();
         }
         let mut ch: u8 = 0;
@@ -513,7 +522,7 @@ pub async fn handle_mize_message(
     ) -> Result<(), MizeError> {
 
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
     //get and get_and_sub cmd from client or module
     if ((message.cmd == MSG_GET || message.cmd == MSG_GET_AND_SUB) &&
         (matches!(&message.origin, Origin::Client(_)) || matches!(&message.origin, Origin::Module(_))))
@@ -547,6 +556,7 @@ pub async fn handle_mize_message(
 
         if (first_char == '!'){
             message.clone().forward_module(id.clone(), mutexes.clone()).await;
+            return Ok(());
         }
 
         //forward to upstream server in case the item is from another Server
@@ -604,14 +614,81 @@ pub async fn handle_mize_message(
     };
 
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
     //give from module
     if (message.cmd == MSG_GIVE && matches!(&message.origin, Origin::Module(_))){
-        //TODO
+        let meta = message.get_metadata()?;
+        let id: String = message.get_id()?;
+        let client_id_str = meta.get("c").ok_or(MizeError{
+            code: 11,
+            kind: "don't know yet".to_string(),
+            message: "there is no \"c\" key in the metadata of a message gotten from a module".to_string(),
+        })?;
+
+        let client_id: u64 = client_id_str.parse().map_err(|_| MizeError{
+            code: 11,
+            kind: "don't know yet".to_string(),
+            message: "Error (std::num::ParseIntError) while parsing the \"c\" key in the Message metadata from a give Message from a Module".to_string()
+        })?;
+
+
+        let clients = mutexes.clients.lock().await;
+        let modules = mutexes.modules.lock().await;
+        let module: Vec<&server::Module> = modules.iter().filter(|&module| module.client_id == client_id).collect();
+        let client: Vec<&Client>= clients.iter().filter(|&client| client.id == client_id).collect();
+
+        //let origin = if let Some(module) = modules.get(module_position)
+
+
+        let origin = if (module.len() == 1) {
+            Origin::Module(module[0].to_owned())
+        } else if (client.len() == 1) {
+            Origin::Client(client[0].to_owned())
+        } else {
+            return Err(MizeError{
+                code: 11,
+                kind: "don't know yet".to_string(),
+                message: "".to_string()
+            })
+        };
+
+        drop(clients);
+        drop(modules);
+
+        while message.raw[2] != '}' as u8 {
+            println!("CHAR: {:?}", message.raw[2]);
+            message.raw.remove(2);
+        }
+        message.raw.remove(2);
+        println!("message raw: {:?}", message.raw);
+
+        message.has_meta = false;
+        message.raw[1] = message.raw[1] - 128;
+
+        origin.send(message).await;
+
+
+        return Ok(());
+
     };
 
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
+    //update from module
+    if (message.cmd == MSG_UPDATE && matches!(&message.origin, Origin::Module(_))){
+        let id: String = message.get_id()?;
+
+        let subs = mutexes.subs.lock().await;
+
+        let empty_vec = &Vec::new();
+        let subbed_origins = subs.get(&id).unwrap_or(empty_vec);
+        for origin in subbed_origins {
+            message.clone().send(origin).await;
+        }
+    };
+
+
+    //###########################################################//
     //update_request from module and client
     if (message.cmd == MSG_UPDATE_REQUEST && (matches!(&message.origin, Origin::Module(_)) || matches!(&message.origin, Origin::Client(_)))){
 
@@ -627,13 +704,12 @@ pub async fn handle_mize_message(
         }
 
         let update = Update::from_message(message.clone())?;
-        println!("UPDATE: {:?}", update.raw);
         handle_update(update, mutexes, message.origin.clone()).await?;
         return Ok(());
     };
 
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
     //delete from Client or Module
     if (message.cmd == MSG_DELETE && (matches!(&message.origin, Origin::Module(_)) || matches!(&message.origin, Origin::Client(_)))){
         let id: String = message.get_id()?;
@@ -648,7 +724,7 @@ pub async fn handle_mize_message(
     }
 
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
     //create from module and Client
     if (message.cmd == MSG_CREATE && (matches!(&message.origin, Origin::Module(_)) || matches!(&message.origin, Origin::Client(_)))){
 
@@ -712,8 +788,9 @@ pub async fn handle_mize_message(
         message.origin.send(Message::from_bytes(created_id_message, message.origin.clone())).await;
     }
 
-    ////////////////////////////////////////////////////////////
+    //###########################################################//
     //for every other message
+    println!("Got a Message That did not Trigger any if Statement....");
     return Ok(());
 }
 
@@ -722,7 +799,6 @@ pub async fn handle_update(mut update: Update, mutexes: Mutexes, origin: Origin)
     //and either call itemstore.update(), send the update to the module or upstream, or spawn another
     //update by calling handle_update()
     
-    println!("handle_update");
 
     ///////////////////////////////// TYPE CODE ////////////////////////////////////////
     //can change the update and spawn new updates (to a different item) (which would call the handle_update func again)

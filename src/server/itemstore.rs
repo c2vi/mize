@@ -120,14 +120,14 @@ impl Itemstore {
             }
 
             //remove field if new_val is empty
-            //if (new_val.len() == 0) {
-                //if let Some(key_index) = keys.iter().position(|x| *x == key.clone()){
-                    //keys.remove(key_index);
-                //}
-                //tr.del(key).await?;
-            //} else {
-                //tr.set(store_key.clone(), new_val).await?;
-            //}
+            if (new_val.len() == 0) {
+                if let Some(key_index) = old_keys.iter().position(|x| *x == key.clone()){
+                    old_keys.remove(key_index);
+                }
+                tr.del(key).await?;
+            } else {
+                tr.set(store_key.clone(), new_val).await?;
+            }
         }
 
         //write keys again

@@ -63,3 +63,6 @@ no / on the end of id:
   code: 112
   category: "faulty_message"
 
+module header not a String:
+  code: 113
+  category: "don't know yet"

@@ -30,6 +30,7 @@ use axum::response::{IntoResponse, Html};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{State, self};
 use axum::http::{StatusCode, Uri, Response, self};
+use axum::http::header::{HeaderName, HeaderValue, HeaderMap};
 use tower_http::services::{ServeDir, ServeFile};
 
 
@@ -68,14 +69,14 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //";
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
 //    rx: UnboundedReceiverStream<Result<ws::Message, warp::Error>>,
     tx: Sender<proto::Message>,
     id: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Module {
     tx: Sender<proto::Message>,
     name: String,
@@ -84,11 +85,14 @@ pub struct Module {
     registered_types: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ModuleKind {
     Binary(),
     Python(),
     Node(),
+
+    //connects to ws server
+    Extern(),
 }
 
 #[derive(Clone, Debug)]
@@ -290,14 +294,16 @@ async fn get_render_main(extract::Path(id): extract::Path<String>, State(mutexes
 
 async fn websocket_handler(
         ws: WebSocketUpgrade,
-            State(mutexes): State<Mutexes>,
+        State(mutexes): State<Mutexes>,
+        headers: HeaderMap,
 ) -> impl IntoResponse {
-        ws.on_upgrade(|socket| handle_websocket_connection(socket, mutexes))
+    ws.on_upgrade(|socket| handle_websocket_connection(socket, mutexes, headers))
 }
 
 async fn handle_websocket_connection(
     socket: WebSocket,
     mutexes: Mutexes,
+    headers: HeaderMap,
 ){
     let (mut socket_tx, mut socket_rx) = socket.split();
     let (msg_tx, msg_rx): (Sender<proto::Message>, Receiver<proto::Message>) = mpsc::channel(SOCKET_CHANNEL_SIZE);
@@ -311,13 +317,46 @@ async fn handle_websocket_connection(
         }
     });
 
-    let mut cli = mutexes.clients.lock().await;
-    let mut client_id = mutexes.next_free_client_id.lock().await;
-    let client = Client{tx: msg_tx.clone(), id: *client_id};
-    cli.push(client.clone());
-    *client_id += 1;
-    drop(cli);
-    drop(client_id);
+    //check if mize-module header exists
+    let origin = if let Some(mod_header_val) = headers.get("mize-module"){
+
+        let mut mods = mutexes.modules.lock().await;
+        let mut client_id = mutexes.next_free_client_id.lock().await;
+        let mut module = Module{
+            tx: msg_tx.clone(),
+            client_id: *client_id,
+            name: String::from("tmp"),
+            kind: ModuleKind::Extern(),
+            registered_types: Vec::new(),
+        };
+
+        *client_id += 1;
+
+        if let Ok(name) = mod_header_val.to_str() {
+            module.name = name.to_string();
+        } else {
+            let err = MizeError{
+                code: 113,
+                kind: "don't know yet".to_string(),
+                message: "The mize-module Header could not be decoded into a String.".to_string(),
+            };
+            msg_tx.send(err.to_message(proto::Origin::Module(module.clone()))).await;
+            return;
+        };
+        println!("module {} connected", module.name);
+        mods.push(module.clone());
+        drop(mods);
+        proto::Origin::Module(module)
+
+    } else {
+        let mut cli = mutexes.clients.lock().await;
+        let mut client_id = mutexes.next_free_client_id.lock().await;
+        let client = Client{tx: msg_tx.clone(), id: *client_id};
+        cli.push(client.clone());
+        *client_id += 1;
+        drop(cli);
+        proto::Origin::Client(client)
+    };
 
     // Reading and broadcasting messages
     while let Some(result) = socket_rx.next().await {
@@ -326,21 +365,44 @@ async fn handle_websocket_connection(
 
         let bytes = match msg {
             Message::Binary(b) => b,
+            Message::Close(_) => {
+                match origin {
+                    proto::Origin::Client(client) => {
+                        //remove client from client list
+                        let mut clients = mutexes.clients.lock().await;
+                        let index = clients.iter().position(|client_iter| client_iter.id == client.id).expect("A Client disconected, that had never connected......");
+                        clients.remove(index);
+                        println!("Close from Client");
+                        return;
+                    },
+                    proto::Origin::Module(module) => {
+                        //remove module from module list
+                        let mut modules = mutexes.modules.lock().await;
+                        let index = modules.iter().position(|module_iter| module_iter.client_id == module.client_id).expect("A Module disconected, that had never connected.....");
+                        modules.remove(index);
+                        println!("Close from Module");
+                        return;
+                    }
+                    proto::Origin::Upstream(_) => {
+                        return;
+                    }
+                }
+            }
             _ => {
                 let err = MizeError{
                     code: 11,
                     kind: "don't know yet".to_string(),
                     message: "the message type was not Binary".to_string(),
                 };
-                msg_tx.send(err.to_message(proto::Origin::Client(client.clone()))).await;
+                msg_tx.send(err.to_message(origin.clone())).await;
                 vec![0]
             },
         };
 
         if let Err(err) = handle_mize_message(
-            proto::Message::from_bytes(bytes, proto::Origin::Client(client.clone())), mutexes.clone(),
+            proto::Message::from_bytes(bytes, origin.clone()), mutexes.clone(),
         ).await {
-            msg_tx.send(err.to_message(proto::Origin::Client(client.clone()))).await;
+            msg_tx.send(err.to_message(origin.clone())).await;
         };
     };
 }
