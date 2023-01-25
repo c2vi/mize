@@ -124,7 +124,10 @@ impl Itemstore {
                 if let Some(key_index) = old_keys.iter().position(|x| *x == key.clone()){
                     old_keys.remove(key_index);
                 }
-                tr.del(key).await?;
+                let mut store_key = update.id.clone().into_bytes();
+                store_key.push(':' as u8);
+                store_key.extend(key);
+                tr.del(store_key).await?;
             } else {
                 tr.set(store_key.clone(), new_val).await?;
             }

@@ -611,6 +611,7 @@ pub async fn handle_mize_message(
 
         let msg = Message::from_bytes(answer, message.origin.clone());
         message.origin.send(msg).await;
+        return Ok(());
     };
 
 
@@ -669,7 +670,6 @@ pub async fn handle_mize_message(
 
 
         return Ok(());
-
     };
 
 
@@ -685,6 +685,7 @@ pub async fn handle_mize_message(
         for origin in subbed_origins {
             message.clone().send(origin).await;
         }
+        return Ok(());
     };
 
 
@@ -721,6 +722,7 @@ pub async fn handle_mize_message(
             };
             return Err(err);
         }
+        return Ok(());
     }
 
 
@@ -786,11 +788,13 @@ pub async fn handle_mize_message(
         let mut created_id_message = vec![VERSION, MSG_CREATED_ID];
         created_id_message.extend(new_id.to_be_bytes());
         message.origin.send(Message::from_bytes(created_id_message, message.origin.clone())).await;
+        
+        return Ok(());
     }
 
     //###########################################################//
     //for every other message
-    println!("Got a Message That did not Trigger any if Statement....");
+    println!("Got a Message That did not Trigger any if Statement....: {:?}", message.raw);
     return Ok(());
 }
 
