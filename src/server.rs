@@ -252,8 +252,8 @@ async fn axum_server(mize_folder: String, mutexes: Mutexes) {
     let renders = mutexes.renders.lock().await;
 
     for render in &*renders {
-        let url_path = String::from("/==api==/render/webroot/") + &render.id + "/";
-        let file_path = render.webroot.clone();
+        let url_path = String::from("/==api==/render/") + &render.id + "/webroot";
+        let file_path = mutexes.mize_folder.clone() + "/modules-renders/" + &render.folder[..] + "/" + &render.webroot.clone()[..];
         let serve_dir = get_service(ServeDir::new(&file_path)).handle_error(handle_error);
 
         app = app.nest_service(&url_path, serve_dir);
