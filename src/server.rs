@@ -9,6 +9,7 @@ use futures_util::{FutureExt, StreamExt, SinkExt};
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::path::Path;
+use crate::error;
 use crate::error::MizeError;
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
@@ -133,6 +134,10 @@ impl Mutexes {
     }
 }
 
+fn test(){
+    println!("test func");
+}
+
 #[tokio::main]
 pub async fn run_server(args: Vec<String>) {
     /*
@@ -151,6 +156,13 @@ pub async fn run_server(args: Vec<String>) {
             }
         }
     }
+
+    //load the errors.toml file and init the error system
+    //let error_toml_file = include_str!("../errors.toml");
+    //println!("ERRORS: {:?}", crate::error::ERRORS);
+    error::init();
+    println!("hello in run_server");
+    test();
 
     //create the itemstore
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
@@ -335,11 +347,9 @@ async fn handle_websocket_connection(
         if let Ok(name) = mod_header_val.to_str() {
             module.name = name.to_string();
         } else {
-            let err = MizeError{
-                code: 113,
-                kind: "don't know yet".to_string(),
-                message: "The mize-module Header could not be decoded into a String.".to_string(),
-            };
+            let err = MizeError::new(113)
+                .extra_msg("The mize-module Header could not be decoded into a String.");
+
             msg_tx.send(err.to_message(proto::Origin::Module(module.clone()))).await;
             return;
         };
@@ -389,11 +399,9 @@ async fn handle_websocket_connection(
                 }
             }
             _ => {
-                let err = MizeError{
-                    code: 11,
-                    kind: "don't know yet".to_string(),
-                    message: "the message type was not Binary".to_string(),
-                };
+                let err = MizeError::new(11)
+                    .extra_msg("the message type was not Binary");
+
                 msg_tx.send(err.to_message(origin.clone())).await;
                 vec![0]
             },

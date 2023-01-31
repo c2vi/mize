@@ -1806,6 +1806,7 @@ dependencies = [
  "futures-util",
  "itertools",
  "json",
+ "lazy_static",
  "surrealdb",
  "tokio",
  "tokio-stream",

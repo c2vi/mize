@@ -94,11 +94,8 @@ impl Itemstore {
         let mut old_keys = match tr.get(format!("{}", update.id).into_bytes()).await? {
             Some(keys) => decode(keys),
             None => {
-                return Err(MizeError{
-                    code: 104,
-                    kind: "data_storage::index_not_found".to_string(),
-                    message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
-                });
+                return Err(MizeError::new(104)
+                    .extra_msg("Internal Datastorage Error: the Index of the Item was not found"));
             },
         };
 
@@ -146,12 +143,8 @@ impl Itemstore {
         let id_u64: u64 = match id_str.parse() {
             Ok(id) => id,
             Err(err) => {
-                return Err(MizeError {
-                    code: 110,
-                    kind: "faulty_message".to_string(),
-                    message: format!("std::num::ParseIntError while parsing id \"{}\" into an Integer", id_str),
-
-                });
+                return Err(MizeError::new(110)
+                    .extra_msg("std::num::ParseIntError while parsing id \"{}\" into an Integer"));
             }
         };
         let mut tr = self.db.transaction(true, true).await?;
@@ -162,11 +155,9 @@ impl Itemstore {
                 tr.del(key).await?;
             }
         } else {
-            return Err(MizeError{
-                code: 104,
-                kind: "data_storage::index_not_found".to_string(),
-                message: "Internal Datastorage Error: the Index of the Item was not found, This means most likely that this item does not exist.".to_string(),
-            });
+            return Err(MizeError::new(104)
+                .extra_msg("Internal Datastorage Error: the Index of the Item was not found, \
+                    This means most likely that this item does not exist."));
         }
 
         tr.del(id_str.into_bytes()).await?;
@@ -197,11 +188,8 @@ impl Itemstore {
             };
             return Ok(item);
         } else {
-            return Err(MizeError{
-                code: 104,
-                kind: "data_storage::index_not_found".to_string(),
-                message: "Internal Datastorage Error: the Index of the Item was not found".to_string(),
-            });
+            return Err(MizeError::new(104)
+                .extra_msg("Internal Datastorage Error: the Index of the Item was not found"));
         }
         return Ok(item);
     }

@@ -126,11 +126,7 @@ pub enum DeltaCmd {
 
 impl Delta {
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Delta, MizeError> {
-        let out_of_bytes = Err(MizeError{
-            code: 107,
-            kind: "faulty_message".to_string(),
-            message: "There were not eneough Bytes in the message to complete a Delta.".to_string()
-        });
+        let out_of_bytes = Err(MizeError::new(107).extra_msg("There were not eneough Bytes in the message to complete a Delta."));
         let mut bytes = bytes.iter();
         let mut delta = Delta{raw: Vec::new()};
 
@@ -183,11 +179,9 @@ impl Delta {
                     delta.raw.push(DeltaCmd::Delete(start, stop));
                 },
                 _ => {
-                    return Err(MizeError{
-                        code: 107,
-                        kind: "faulty_message".to_string(),
-                        message: format!("The update message included a DeltaCmd of {}, only 0,1,2 (for: replace, insert, delete) are allowed.",cmd)
-                    });
+                    return Err(MizeError::new(107)
+                        .extra_msg(&format!("The update message included a DeltaCmd of {}.\
+                                 Only 0,1,2 (for: replace, insert, delete) are allowed.", cmd)));
                 },
             }
         };
@@ -203,11 +197,9 @@ impl Update {
         let id_u64 = match id.parse::<u64>(){
             Ok(id) => id,
             Err(err) => {
-                return Err(MizeError{
-                    code: 11,
-                    kind: "don't know yet".to_string(),
-                    message: "Error while parsing id to u64 (std::num::ParseIntError) in order to get it from the itemstore. (get or get_sub message)".to_string(),
-                });
+                return Err(MizeError::new(11)
+                    .extra_msg("Error while parsing id to u64 (std::num::ParseIntError) in order to get it from the itemstore.\
+                        (get or get_sub message)"));
             }
         };
 
@@ -393,18 +385,10 @@ impl Message {
 
     pub fn get_metadata(&mut self) -> Result<HashMap<String, String>, MizeError> {
         if !self.has_meta {
-            return Err(MizeError {
-                code: 108,
-                kind: "faulty_message".to_string(),
-                message: "The message should have medatata, but it hasn't. (cmd <= 128)".to_string(),
-            })
+            return Err(MizeError::new(108).extra_msg("The message should have medatata, but it hasn't. (cmd <= 128)"))
         };
 
-        let meta_err = MizeError {
-            code: 107,
-            kind: "faulty_message".to_string(),
-            message: "Error while parsing the metadata of a message.".to_string(),
-        };
+        let meta_err = MizeError::new(107).extra_msg("Error while parsing the metadata of a message.");
 
         let mut meta_vec:Vec<u8> = Vec::new();
         let mut msg_iter = self.raw[self.index..].iter();
@@ -433,11 +417,7 @@ impl Message {
             meta_vec.push(*ch);
         };
 
-        return Err(MizeError {
-            code: 107,
-            kind: "faulty_message".to_string(),
-            message: "Error while parsing the metadata of a message.".to_string(),
-        })
+        return Err(MizeError::new(107).extra_msg("Error while parsing the metadata of a message."))
 
     }
 
@@ -463,11 +443,7 @@ impl Message {
             }
         }
 
-        return Err(MizeError {
-            code: 112,
-            kind: "faulty_message".to_string(),
-            message: "There is no / to indicate where the id ends".to_string(),
-        });
+        return Err(MizeError::new(112).extra_msg("There is no / to indicate where the id ends"));
 
 //        let len = self.raw.len();
 //        while self.index < 10000 {
@@ -548,11 +524,8 @@ pub async fn handle_mize_message(
 
         //forward to module in case the item is from a Module
         //append medatata
-        let first_char = id.chars().nth(0).ok_or(MizeError{
-            code: 11,
-            kind: "don't know yet".to_string(),
-            message: "Somehow the id is empty. while handling a get or get_sub message.".to_string(),
-        })?;
+        let first_char = id.chars().nth(0)
+            .ok_or(MizeError::new(11).extra_msg("Somehow the id is empty. while handling a get or get_sub message."))?;
 
         if (first_char == '!'){
             message.clone().forward_module(id.clone(), mutexes.clone()).await;
@@ -583,11 +556,9 @@ pub async fn handle_mize_message(
         let id_u64 = match id.parse::<u64>(){
             Ok(id) => id,
             Err(err) => {
-                return Err(MizeError{
-                    code: 11,
-                    kind: "don't know yet".to_string(),
-                    message: "Error while parsing id to u64 in order to get it from the itemstore. (get or get_sub message)".to_string(),
-                });
+                return Err(MizeError::new(11)
+                    .extra_msg("Error while parsing id to u64 in order to get it from the itemstore.\
+                        (get or get_sub message)"));
             }
         };
 
@@ -620,18 +591,14 @@ pub async fn handle_mize_message(
     if (message.cmd == MSG_GIVE && matches!(&message.origin, Origin::Module(_))){
         let meta = message.get_metadata()?;
         let id: String = message.get_id()?;
-        let client_id_str = meta.get("c").ok_or(MizeError{
-            code: 11,
-            kind: "don't know yet".to_string(),
-            message: "there is no \"c\" key in the metadata of a message gotten from a module".to_string(),
-        })?;
+        let client_id_str = meta.get("c")
+            .ok_or(MizeError::new(11)
+            .extra_msg("there is no \"c\" key in the metadata of a message gotten from a module"))?;
 
-        let client_id: u64 = client_id_str.parse().map_err(|_| MizeError{
-            code: 11,
-            kind: "don't know yet".to_string(),
-            message: "Error (std::num::ParseIntError) while parsing the \"c\" key in the Message metadata from a give Message from a Module".to_string()
-        })?;
-
+        let client_id: u64 = client_id_str.parse()
+            .map_err(|_| MizeError::new(11)
+            .extra_msg("Error (std::num::ParseIntError) while parsing the \"c\" key \
+                in the Message metadata from a give Message from a Module"))?;
 
         let clients = mutexes.clients.lock().await;
         let modules = mutexes.modules.lock().await;
@@ -646,11 +613,7 @@ pub async fn handle_mize_message(
         } else if (client.len() == 1) {
             Origin::Client(client[0].to_owned())
         } else {
-            return Err(MizeError{
-                code: 11,
-                kind: "don't know yet".to_string(),
-                message: "".to_string()
-            })
+            return Err(MizeError::new(11))
         };
 
         drop(clients);
@@ -694,11 +657,9 @@ pub async fn handle_mize_message(
     if (message.cmd == MSG_UPDATE_REQUEST && (matches!(&message.origin, Origin::Module(_)) || matches!(&message.origin, Origin::Client(_)))){
 
         let id: String = message.get_id()?;
-        let first_char = id.chars().nth(0).ok_or(MizeError{
-            code: 11,
-            kind: "don't know yet".to_string(),
-            message: "Somehow the id is empty. while handling a get or get_sub message.".to_string(),
-        })?;
+        let first_char = id.chars().nth(0)
+            .ok_or(MizeError::new(11)
+            .extra_msg("Somehow the id is empty. while handling a get or get_sub message."))?;
 
         if (first_char == '!'){
             message.clone().forward_module(id, mutexes.clone()).await;
@@ -715,11 +676,7 @@ pub async fn handle_mize_message(
     if (message.cmd == MSG_DELETE && (matches!(&message.origin, Origin::Module(_)) || matches!(&message.origin, Origin::Client(_)))){
         let id: String = message.get_id()?;
         if id == "0".to_string() {
-            let err = error::MizeError {
-                kind: "don't know yet".to_string(),
-                code: 100,
-                message: "You can't delete item number 0. This item contains mandatory Config for the Server.".to_string(),
-            };
+            let err = MizeError::new(100);
             return Err(err);
         }
         return Ok(());
@@ -814,24 +771,20 @@ pub async fn handle_update(mut update: Update, mutexes: Mutexes, origin: Origin)
     let id_u64 = match update.id.clone().parse::<u64>(){
         Ok(id) => id,
         Err(err) => {
-            return Err(MizeError{
-                code: 11,
-                kind: "don't know yet".to_string(),
-                message: "Error while parsing id to u64 in order to get it from the itemstore. (get or get_sub message)".to_string(),
-            });
+            return Err(MizeError::new(11)
+                .extra_msg("Error while parsing id to u64 in order to get it from the itemstore.\
+                    (get or get_sub message)"));
         }
     };
     let item = itemstore.get(id_u64).await?;
-    let commit_pos = item.iter().position(|field| field[0] == "_commit".to_string().into_bytes()).ok_or(MizeError{
-        code: 103,
-        kind: "key_missing::_commit".to_string(),
-        message: format!("Item {} has not _commit", id_u64),
-    })?;
-    let cur_commit = u64::from_be_bytes(item[commit_pos][1].clone().try_into().map_err(|_|MizeError{
-        code: 105,
-        kind: "don't know yet".to_string(),
-        message: "_commit is not 8 bytes long".to_string(),
-    })?);
+    let commit_pos = item.iter()
+        .position(|field| field[0] == "_commit".to_string().into_bytes())
+        .ok_or(MizeError::new(103)
+        .extra_msg(&format!("Item {} has not _commit", id_u64)))?;
+
+    let cur_commit = u64::from_be_bytes(item[commit_pos][1].clone().try_into()
+        .map_err(|_|MizeError::new(105))?
+    );
 
     //because Update::change_whole_val trys to lock the itemstore as well
     drop(itemstore);
