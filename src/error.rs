@@ -1,72 +1,171 @@
 
 use std::collections::HashMap;
 use std::string::FromUtf8Error;
+use toml::Value;
+use colored::Colorize;
+
+use serde::{Serialize, Deserialize};
+use serde_json::Value as JsonValue;
+use toml;
+
+use crate::server::proto::{self, JsonMessage};
+use crate::error::proto::ErrMessage;
+use crate::server::proto::MizeMessage;
+use crate::server::Peer;
 
 lazy_static::lazy_static! {
-    static ref ERRORS: HashMap<u32, MizeError> = parse_errors();
+    pub static ref ERRORS: HashMap<u32, MizeError> = parse_errors();
 }
 
 fn parse_errors() -> HashMap<u32, MizeError>{
-    let toml_string = include_str!("../errors.toml");
+    let mut map = HashMap::new();
+    let binding = include_str!("../errors.toml")
+        .parse::<Value>()
+        .expect("Error pasting errors.toml file to Toml.");
+
+    let toml_error = binding.get("error")
+        .expect("Error getting error table from errors.toml file for Error handling");
+
+    if let Value::Array(error_arr) = toml_error {
+        for err in error_arr {
+
+            let code: u32 = if let Value::Integer(code) = err.get("code")
+                .expect("some error object in errors.toml has no code field.") {
+                    u32::try_from(*code).expect(&format!("Error converting the error code {} &i64 to u32", code))
+                } else {
+                    panic!("code value exists in errors.toml, but is not an Integer")
+            };
+
+            let message = if let Value::String(message) = err.get("message")
+                .unwrap_or(&Value::String("".to_string())) {message.to_string()} else {
+                    panic!("message value exists in errors.toml on error obect with code {}, but is not a String", code)
+            };
+
+            let category = if let Value::String(category) = err.get("category")
+                .expect(&format!("the error object in errors.toml with code {} has no category field", code)) {category.to_string()} else {
+                    panic!("category value exists in errors.toml on error obect with code {}, but is not a String", code)
+            };
+
+            let error = MizeError{code, message, category, extra_msg: None, caused_by_msg: None, code_location: None};
+
+            map.insert(code, error);
+        }
+    } else {
+        panic!("errors.toml File wrong. error path is not an array")
+    }
+
+    return map;
 }
 
-use json;
-use toml;
-use crate::server::proto;
 
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MizeError {
     pub category: String,
     pub code: u32,
     pub message: String,
     pub extra_msg: Option<String>,
+    pub caused_by_msg: Option<CausedByMessage>,
+    pub code_location: Option<MizeCodeLocation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausedByMessage {
+    client_id: u64,
+    msg: Box<JsonMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MizeCodeLocation {
+    file: String,
+    line: u32,
+    column: u32,
+}
+
+impl From<&std::panic::Location <'_>> for MizeCodeLocation {
+    fn from(panic_location: &std::panic::Location) -> MizeCodeLocation {
+        let file = panic_location.file().to_string();
+        let line = panic_location.line();
+        let column = panic_location.column();
+        MizeCodeLocation {file, line, column}
+    }
 }
 
 impl MizeError {
+    #[track_caller]
     pub fn new(code: u32) -> MizeError {
-        //let error = ERRORS.
+        let caller_location = std::panic::Location::caller();
 
         MizeError {
             category: "error with error system".to_string(),
             code: 114,
-            message: "The error with code {} was not found in the errors.toml file".to_string(),
-            extra_msg: None
+            message: "The error with code {} was not found in the Errors that where imported from the errors.toml file at build time.".to_string(),
+            extra_msg: None,
+            caused_by_msg: None,
+            code_location: Some(caller_location.into()),
         }
     }
 
-//    pub fn format(&self, values: [str]){
-//    }
-
-    pub fn extra_msg(mut self, msg: &str) -> MizeError{
+    pub fn extra_msg(mut self, msg: &str) -> MizeError {
         self.extra_msg = Some(msg.to_string());
         return self;
     }
+    
+    pub fn format(mut self, values: Vec<&str>) -> MizeError {
+        let count = 0;
+        for val in values {
+            self.message += &(" FORMAT_".to_string() + &format!("{}", count) + ": " + val)
+        }
+        return self;
+    }
 
-    pub fn to_json(self: MizeError) -> json::JsonValue{
-        if let Some(extra_msg) = self.extra_msg {
-            json::object!{
-                category: self.category,
-                code: self.code,
-                message: self.message,
-                extra_msg: extra_msg,
+    fn set_msg(self, msg: MizeMessage, origin: Peer) -> MizeError {
+        MizeError::new(11).extra_msg("in set_msg TODO!!")
+    }
+
+    fn send(self) -> MizeError{
+        self
+    }
+
+    fn add_to_err_item(self) -> MizeError {
+        self
+    }
+
+    fn write_to_stderr(self) -> MizeError {
+        eprintln!("[{}] {}", "ERROR".red(), self.to_json());
+        self
+    }
+
+    pub fn handle(self) -> MizeError {
+        return self.send().add_to_err_item().write_to_stderr();
+    }
+
+    pub fn to_json(&self) -> JsonValue{
+        if let Ok(string) = serde_json::to_string(self) {
+            if let Ok(json) = serde_json::from_str(&string) {
+                return json;
+            } else {
+                return serde_json::json!({
+                    "category": "error with error system",
+                    "code": 114,
+                    "message": "error converting a String to a JsonValue for the ErrMsg",
+                })
             }
         } else {
-            json::object!{
-                category: self.category,
-                code: self.code,
-                message: self.message,
-            }
+            return serde_json::json!({
+                "category": "error with error system",
+                "code": 114,
+                "message": "error converting an MizeError to String",
+            })
         }
     }
 
-    pub fn to_message(self: MizeError, origin: proto::Origin) -> proto::Message {
-        let data = self.to_json();
-        let mut msg = vec![crate::PROTO_VERSION, proto::MSG_ERROR];
-        msg.extend(json::stringify(data).into_bytes());
-        return proto::Message::from_bytes(msg, origin);
+    pub fn to_json_message(self) -> JsonMessage {
+        proto::JsonMessage::ErrMsg(
+            ErrMessage{
+                err: self,
+            }
+        )
     }
-
 }
 
 impl From<FromUtf8Error> for MizeError {
@@ -76,7 +175,15 @@ impl From<FromUtf8Error> for MizeError {
 }
 
 impl From<surrealdb::Error> for MizeError {
-    fn from(sur_err: surrealdb::Error) -> MizeError{
+    fn from(sur_err: surrealdb::Error) -> MizeError {
         MizeError::new(129)
     }
 }
+
+impl From<serde_json::Error> for MizeError {
+    fn from(serde_err: serde_json::Error) -> MizeError {
+        MizeError::new(11).extra_msg("From an serde_json::Error. TODO: include actual error msg.")
+    }
+}
+
+

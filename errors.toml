@@ -2,7 +2,32 @@
 [[error]]
 code = 11
 category = "don't know yet"
-message = "Something went wrong. Someone was too lazy to define an exact error for that."
+message = "Something went wrong. //TODO: give this error it's own category and code."
+
+[[error]]
+category = "data_storage"
+code = 28
+message = "Something went wrong in the data storage."
+
+[[error]]
+code = 29
+category = "data_storage:surrealdb_error"
+message = "Something went wrong internally with the data-storage (surrealdb/rocksdb): {}"
+
+[[error]]
+code = 30
+category = "data_storage:surrealdb_error"
+message = "Could not create data_storeage at {}"
+
+[[error]]
+code = 31
+category = "data_storage:surrealdb_error"
+message = "No item with id 0. There definetly should be one"
+
+[[error]]
+code = 32
+category = "data_storage"
+message = "item {} was not found in storage"
 
 [[error]]
 code = 100
@@ -10,19 +35,9 @@ category = "don't know yet"
 message = "You can't delete item number 0. This item contains mandatory Config for the Server."
 
 [[error]]
-category = "data_storage"
-code = 128
-message = "Something went wrong in the data storage."
-
-[[error]]
-code = 129
-category = "data_storage:surrealdb_error"
-message = "Something went wrong internally with the data-storage (surrealdb): {}"
-
-[[error]]
 code = 101
 category = "key_missing::item0::num_of_items"
-messate = "num_of_items missing in item0"
+message = "num_of_items missing in item0"
 
 [[error]]
 code = 102
@@ -30,12 +45,12 @@ category = "key_missing::item0::next_free_id"
 message = "next_free_id missing in item0"
 
 [[error]]
-_commit missing in item0:
+message = "_commit missing in item0"
 code = 103
 category = "key_missing::item0::_commit"
 
 [[error]]
-_commit missing:
+message = "_commit missing"
 code = 103
 category = "key_missing::_commit"
 
@@ -80,7 +95,13 @@ category = "don't know yet"
 message = "module header not a String"
 
 [[error]]
-code 114
+code = 114
 category = "error with error system"
 message = "the error with code {} was not found in the errors.toml file"
+
+[[error]]
+code = 115
+category = "WebSocket Error"
+message = "Error reviecing a message from the WebSocket"
+
 

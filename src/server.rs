@@ -2,6 +2,7 @@
 
 pub mod server_utils;
 pub mod itemstore;
+
 pub mod proto;
 
 //use futures_util::lock::Mutex;
@@ -11,6 +12,11 @@ use std::boxed::Box;
 use std::path::Path;
 use crate::error;
 use crate::error::MizeError;
+use crate::error::ERRORS;
+use crate::server::proto::MizeMessage;
+
+use serde_json::Value as JsonValue;
+use serde::{Serialize, Deserialize};
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
 use tokio_stream::wrappers::ReceiverStream;
@@ -19,7 +25,6 @@ use std::fs;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
-use crate::server::proto::handle_mize_message;
 
 use self::itemstore::Itemstore;
 
@@ -69,17 +74,42 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 //Version: 0
 //";
 
+#[derive(Clone, Debug)]
+pub enum Peer {
+    Client(Client), //the client id
+    Module(Module), //Module_name
+    Upstream(String), //a hostname Type, but for now just a string
+}
+
+impl Peer {
+    pub async fn send<T> (&self, message: T) where T: Into<proto::MizeMessage>{
+        let message: proto::MizeMessage = message.into();
+        match self {
+            Peer::Client(client) => {client.tx.send(message).await;},
+            Peer::Module(module) => {module.tx.send(message).await;},
+            Peer::Upstream(_) => {},
+        }
+    }
+    pub fn get_id(&self) -> u64{
+        match self {
+            Peer::Client(client) => client.id,
+            Peer::Module(module) => module.client_id,
+            Peer::Upstream(_) => 0,
+        }
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub struct Client {
 //    rx: UnboundedReceiverStream<Result<ws::Message, warp::Error>>,
-    tx: Sender<proto::Message>,
+    tx: Sender<proto::MizeMessage>,
     id: u64,
 }
 
 #[derive(Clone, Debug)]
 pub struct Module {
-    tx: Sender<proto::Message>,
+    tx: Sender<proto::MizeMessage>,
     name: String,
     client_id: u64,
     kind: ModuleKind,
@@ -88,9 +118,10 @@ pub struct Module {
 
 #[derive(Clone, Debug)]
 pub enum ModuleKind {
-    Binary(),
+    Rust(),
     Python(),
-    Node(),
+    JS(),
+    Lua(),
 
     //connects to ws server
     Extern(),
@@ -104,6 +135,16 @@ pub struct Render {
     folder: String,
 }
 
+trait SendMize<T> where T: Into<MizeMessage> {
+    fn send(&self, msg: T);
+}
+
+impl<T> SendMize<T> for Sender<MizeMessage> where MizeMessage: From<T> {
+    fn send(&self, msg: T){
+        self.send(msg.into());
+    }
+}
+
 //pub struct Upstream maybe???? ... I'd say later....
 
 
@@ -113,7 +154,7 @@ pub struct Mutexes {
     next_free_client_id: Arc<Mutex<u64>>,
     clients: Arc<Mutex<Vec<Client>>>,
     modules: Arc<Mutex<Vec<Module>>>,
-    subs: Arc<Mutex<HashMap<String, Vec<proto::Origin>>>>,
+    subs: Arc<Mutex<HashMap<String, Vec<Peer>>>>,
     renders: Arc<Mutex<Vec<Render>>>,
     //maybe a list of upstream servers??
     itemstore: Arc<Mutex<Itemstore>>,
@@ -132,10 +173,6 @@ impl Mutexes {
             itemstore: Arc::clone(&mutexes.itemstore),
         }
     }
-}
-
-fn test(){
-    println!("test func");
 }
 
 #[tokio::main]
@@ -157,18 +194,11 @@ pub async fn run_server(args: Vec<String>) {
         }
     }
 
-    //load the errors.toml file and init the error system
-    //let error_toml_file = include_str!("../errors.toml");
-    //println!("ERRORS: {:?}", crate::error::ERRORS);
-    error::init();
-    println!("hello in run_server");
-    test();
-
     //create the itemstore
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
     //load modules and renders
-    let ren_mods = std::fs::read_dir(mize_folder.clone() + "/modules-renders")
+    let ren_mods = std::fs::read_dir(mize_folder.clone() + "/mr")
         .expect("error reading the modules-renders dir in the mize-folder")
         .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
     
@@ -318,14 +348,30 @@ async fn handle_websocket_connection(
     headers: HeaderMap,
 ){
     let (mut socket_tx, mut socket_rx) = socket.split();
-    let (msg_tx, msg_rx): (Sender<proto::Message>, Receiver<proto::Message>) = mpsc::channel(SOCKET_CHANNEL_SIZE);
+    let (msg_tx, msg_rx): (Sender<proto::MizeMessage>, Receiver<proto::MizeMessage>) = mpsc::channel(SOCKET_CHANNEL_SIZE);
 
     let mut msg_rx = ReceiverStream::new(msg_rx);
 
     //my own forward
     tokio::spawn(async move {
         while let Some(msg) = msg_rx.next().await {
-            socket_tx.send(Message::Binary(msg.raw)).await;
+            match msg {
+                proto::MizeMessage::Json(json_msg) => {
+                    if let Ok(msg) = serde_json::to_string(&json_msg) {
+                        socket_tx.send(Message::Text(msg)).await;
+                    } else {
+                        let err: MizeError = MizeError::new(11).extra_msg("error while serializing a json message").handle();
+                        if let Ok(text) = serde_json::to_string(&err.to_json()){
+                            socket_tx.send(Message::Text(text));
+                        } else {
+                            MizeError::new(11).extra_msg("not even being able to serialize an error, while failing to serializing a message").handle();
+                        }
+                    }
+                }
+                proto::MizeMessage::Bin(bin_msg) => {
+                    socket_tx.send(Message::Binary(bin_msg.raw)).await;
+                }
+            }
         }
     });
 
@@ -350,13 +396,13 @@ async fn handle_websocket_connection(
             let err = MizeError::new(113)
                 .extra_msg("The mize-module Header could not be decoded into a String.");
 
-            msg_tx.send(err.to_message(proto::Origin::Module(module.clone()))).await;
+            msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
             return;
         };
         println!("module {} connected", module.name);
         mods.push(module.clone());
         drop(mods);
-        proto::Origin::Module(module)
+        Peer::Module(module)
 
     } else {
         let mut cli = mutexes.clients.lock().await;
@@ -365,52 +411,81 @@ async fn handle_websocket_connection(
         cli.push(client.clone());
         *client_id += 1;
         drop(cli);
-        proto::Origin::Client(client)
+        Peer::Client(client)
     };
 
-    // Reading and broadcasting messages
+    // Reading messages
     while let Some(result) = socket_rx.next().await {
-        let msg = result.expect("Error when getting message from WebSocket");
-        println!("got message: {:?}", msg);
+        let msg = if let Ok(msg) = result {msg} else {
+            let err = MizeError::new(115).handle();
+            msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
+            continue;
+        };
 
-        let bytes = match msg {
-            Message::Binary(b) => b,
+        match msg {
+            Message::Binary(b) => {
+                println!("Recieved a Binary Message. Those are not implemented yet.")
+            },
+
+
+            Message::Text(text) => {
+                let json_msg: proto::JsonMessage = serde_json::from_str(&text).expect("error parsing json");
+                match json_msg {
+                    proto::JsonMessage::ForItem(item_msg) => {
+                        if let Err(err) = proto::handle_item_msg(item_msg, origin.clone(), mutexes.clone()).await {
+                            let err_msg: MizeMessage = err.handle().into();
+                            origin.send(err_msg).await;
+                        };
+                    },
+                    _ => {println!("Got a non ItemMessage")},
+                }
+
+            }
+
+
             Message::Close(_) => {
                 match origin {
-                    proto::Origin::Client(client) => {
+                    Peer::Client(ref client) => {
                         //remove client from client list
                         let mut clients = mutexes.clients.lock().await;
-                        let index = clients.iter().position(|client_iter| client_iter.id == client.id).expect("A Client disconected, that had never connected......");
+                        let index = match clients.iter()
+                            .position(|client_iter| client_iter.id == client.id)
+                            .ok_or(MizeError::new(11).extra_msg("A Client disconected, that had never connected......")){
+                                Ok(index) => index,
+                                Err(err) => {
+                                    let msg: MizeMessage = err.into();
+                                    origin.send(msg);
+                                    return;
+                                },
+                            };
                         clients.remove(index);
                         println!("Close from Client");
                         return;
                     },
-                    proto::Origin::Module(module) => {
+                    Peer::Module(module) => {
                         //remove module from module list
                         let mut modules = mutexes.modules.lock().await;
-                        let index = modules.iter().position(|module_iter| module_iter.client_id == module.client_id).expect("A Module disconected, that had never connected.....");
+                        let index = modules.iter()
+                            .position(|module_iter| module_iter.client_id == module.client_id)
+                            .expect("A Module disconected, that had never connected.....");
                         modules.remove(index);
                         println!("Close from Module");
                         return;
                     }
-                    proto::Origin::Upstream(_) => {
+                    Peer::Upstream(_) => {
                         return;
                     }
                 }
             }
+
+
             _ => {
                 let err = MizeError::new(11)
-                    .extra_msg("the message type was not Binary");
+                    .extra_msg("unhandeld WebSocket-Message type")
+                    .handle();
 
-                msg_tx.send(err.to_message(origin.clone())).await;
-                vec![0]
+                msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
             },
-        };
-
-        if let Err(err) = handle_mize_message(
-            proto::Message::from_bytes(bytes, origin.clone()), mutexes.clone(),
-        ).await {
-            msg_tx.send(err.to_message(origin.clone())).await;
         };
     };
 }
