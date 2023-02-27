@@ -243,13 +243,13 @@ impl<'de> Deserialize<'de> for MizeId {
     where
         D: serde::Deserializer<'de>,
     {
-        struct MizeIdVisitor {}
+        struct MizeIdVisitor;
 
         impl<'de> Visitor<'de> for MizeIdVisitor {
             type Value = MizeId;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("Could not deserialize element")
+                formatter.write_str("a MizeId id, which is a string that my start with @ or # ")
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -291,7 +291,7 @@ impl<'de> Deserialize<'de> for MizeId {
 //            }
         }
 
-        deserializer.deserialize_map(MizeIdVisitor {})
+        deserializer.deserialize_str(MizeIdVisitor {})
     }
 }
 

@@ -78,8 +78,8 @@ impl Itemstore {
             Ok(Some(val)) => println!("item 0 already created"),
             Ok(None) => {
                 let data = serde_json::json!({
-                        "num_of_items": 0,
-                        "next_free_id": 0,
+                        "num_of_items": 1,
+                        "next_free_id": 1,
                         "_commit": 0,
                         "mize-type": "mize-main",
                         "mize-id": "0"

@@ -326,7 +326,8 @@ async fn get_render_main(extract::Path(id): extract::Path<String>, State(mutexes
     let render = renders.iter().filter(|&render| render.id == id).nth(0)
         .unwrap_or(renders.iter().filter(|&render| render.id == "first").nth(0).expect("there is no first render"));
 
-    let file_name = mutexes.mize_folder.clone() + "/modules-renders/" + &render.folder + "/" + &render.main;
+    let file_name = mutexes.mize_folder.clone() + "/mr/" + &render.folder + "/" + &render.main;
+    println!("filenamd: {}", file_name);
 
     Response::builder()
         .header("content-type", "application/javascript")
