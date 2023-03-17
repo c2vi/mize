@@ -95,13 +95,19 @@ impl MizeError {
     pub fn new(code: u32) -> MizeError {
         let caller_location = std::panic::Location::caller();
 
-        MizeError {
-            category: "error with error system".to_string(),
-            code: 114,
-            message: "The error with code {} was not found in the Errors that where imported from the errors.toml file at build time.".to_string(),
-            extra_msg: None,
-            caused_by_msg: None,
-            code_location: Some(caller_location.into()),
+        if let Some(err_ref) = ERRORS.get(&code) {
+            let mut err = err_ref.clone();
+            err.code_location = Some(caller_location.into());
+            return err;
+        } else {
+            return MizeError {
+                category: "error with error system".to_string(),
+                code: 114,
+                message: format!("The error with code {} was not found in the Errors that where imported from the errors.toml file at build time.", code),
+                extra_msg: None,
+                caused_by_msg: None,
+                code_location: Some(caller_location.into()),
+            };
         }
     }
 
@@ -185,5 +191,7 @@ impl From<serde_json::Error> for MizeError {
         MizeError::new(11).extra_msg("From an serde_json::Error. TODO: include actual error msg.")
     }
 }
+
+
 
 
