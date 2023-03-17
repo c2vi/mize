@@ -39,29 +39,18 @@ pub struct BinMessage {
     pub raw: Vec<u8>,
 }
 
-#[derive(From, Clone, Debug, Deserialize)]
-pub enum JsonMessage {
-    ErrMsg(ErrMessage),
-    ForItem(ItemMessage),
-    ForArr(ArrayMessage),
-}
-
 #[derive(From, Debug, Clone, Serialize, Deserialize)]
 pub struct ErrMessage {
     //pub cat: String,
     pub err: MizeError,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArrayMessage {
-    //for interacting with __arr__ category
-    //TODO
-}
-
 //enum variant and a struct for every cmd a good idea???
 #[derive(From, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd")]
-pub enum ItemMessage {
+pub enum JsonMessage {
+    #[serde(rename="err")]
+    ErrMsg(ErrMessage),
     #[serde(rename="item.get")]
     Get(GetItemMessage),
     #[serde(rename="item.get-sub")]
@@ -182,8 +171,7 @@ pub enum MizeId {
 
 impl From<GiveItemMessage> for MizeMessage {
     fn from(give: GiveItemMessage) -> MizeMessage {
-        let hi: ItemMessage = give.into();
-        let two: JsonMessage = hi.into();
+        let two: JsonMessage = give.into();
         return two.into();
     }
 }
@@ -198,8 +186,7 @@ impl From<MizeError> for MizeMessage {
 
 impl From<CreatedIdMessage> for MizeMessage {
     fn from(give: CreatedIdMessage) -> MizeMessage {
-        let hi: ItemMessage = give.into();
-        let two: JsonMessage = hi.into();
+        let two: JsonMessage = give.into();
         return two.into();
     }
 }
@@ -290,37 +277,14 @@ impl<'de> Deserialize<'de> for MizeId {
     }
 }
 
-
-impl Serialize for JsonMessage {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer 
-    {
-
-        match self {
-            JsonMessage::ErrMsg(err_msg) => {
-                ErrMessage::serialize(&err_msg, serializer)
-            },
-
-            JsonMessage::ForArr(arr_msg) => {
-                ArrayMessage::serialize(&arr_msg, serializer)
-            },
-
-            JsonMessage::ForItem(item_msg) => {
-                ItemMessage::serialize(&item_msg, serializer)
-            },
-        }
-    }
-}
-
 //###//===================================================
 // functions
 
-pub async fn handle_item_msg(msg: ItemMessage, origin: Peer, mutexes: Mutexes) -> Result<(), MizeError>{
+pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -> Result<(), MizeError>{
 
     match msg {
 
-        ItemMessage::Get(msg) => {
+        JsonMessage::Get(msg) => {
             match msg.id {
                 //MizeId::Module { mod_name, id } => {
                 //TODO: get type of module with mod_name .... and then either forward msg or call
@@ -342,7 +306,7 @@ pub async fn handle_item_msg(msg: ItemMessage, origin: Peer, mutexes: Mutexes) -
         },
 
 
-        ItemMessage::GetSub(msg) => {
+        JsonMessage::GetSub(msg) => {
 
             //sub to item
             let mut subs = mutexes.subs.lock().await;
@@ -374,12 +338,12 @@ pub async fn handle_item_msg(msg: ItemMessage, origin: Peer, mutexes: Mutexes) -
         }
 
 
-        ItemMessage::UpdateRequest(msg) => {
+        JsonMessage::UpdateRequest(msg) => {
             handle_update(msg.id, msg.delta, mutexes.clone(), Some(origin)).await?;
         },
 
 
-        ItemMessage::Create(msg) => {
+        JsonMessage::Create(msg) => {
             let itemstore = mutexes.itemstore.lock().await;
             let id = itemstore.create(msg.item, mutexes.clone()).await?;
             let response = CreatedIdMessage {id: MizeId::Local(id)};
@@ -389,7 +353,7 @@ pub async fn handle_item_msg(msg: ItemMessage, origin: Peer, mutexes: Mutexes) -
         },
 
 
-        ItemMessage::Delete(msg) => {
+        JsonMessage::Delete(msg) => {
             match msg.id {
                 MizeId::Local(id) => {
                     let itemstore = mutexes.itemstore.lock().await;

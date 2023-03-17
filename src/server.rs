@@ -408,18 +408,11 @@ async fn handle_websocket_connection(
 
             Message::Text(text) => {
                 let json_msg: proto::JsonMessage = serde_json::from_str(&text).expect("error parsing json");
-                match json_msg {
-                    proto::JsonMessage::ForItem(item_msg) => {
-                        if let Err(err) = proto::handle_item_msg(item_msg, origin.clone(), mutexes.clone()).await {
-                            let err_msg: MizeMessage = err.handle().into();
-                            origin.send(err_msg).await;
-                        };
-                    },
-                    _ => {println!("Got a non ItemMessage")},
+                    if let Err(err) = proto::handle_json_msg(json_msg, origin.clone(), mutexes.clone()).await {
+                        let err_msg: MizeMessage = err.handle().into();
+                        origin.send(err_msg).await;
+                    };
                 }
-
-            }
-
 
             Message::Close(_) => {
                 match origin {
