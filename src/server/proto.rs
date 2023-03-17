@@ -39,14 +39,10 @@ pub struct BinMessage {
     pub raw: Vec<u8>,
 }
 
-#[derive(From, Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "cat")]
+#[derive(From, Clone, Debug, Deserialize)]
 pub enum JsonMessage {
-    #[serde(rename="err")]
     ErrMsg(ErrMessage),
-    #[serde(rename="item")]
     ForItem(ItemMessage),
-    #[serde(rename="arr")]
     ForArr(ArrayMessage),
 }
 
@@ -66,25 +62,25 @@ pub struct ArrayMessage {
 #[derive(From, Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd")]
 pub enum ItemMessage {
-    #[serde(rename="get")]
+    #[serde(rename="item.get")]
     Get(GetItemMessage),
-    #[serde(rename="get-sub")]
+    #[serde(rename="item.get-sub")]
     GetSub(GetSubMessage),
-    #[serde(rename="give")]
+    #[serde(rename="item.give")]
     Give(GiveItemMessage),
-    #[serde(rename="create")]
+    #[serde(rename="item.create")]
     Create(CreateItemMessage),
-    #[serde(rename="created-id")]
+    #[serde(rename="item.created-id")]
     CreatedId(CreatedIdMessage),
-    #[serde(rename="delete")]
+    #[serde(rename="item.delete")]
     Delete(DeleteItemMessage),
-    #[serde(rename="sub")]
+    #[serde(rename="item.sub")]
     Sub(SubItemMessage),
-    #[serde(rename="unsub")]
+    #[serde(rename="item.unsub")]
     Unsub(UnsubItemMessage),
-    #[serde(rename="update-req")]
+    #[serde(rename="item.update-req")]
     UpdateRequest(UpdateRequestMessage),
-    #[serde(rename="update")]
+    #[serde(rename="item.update")]
     Update(UpdateMessage),
 }
 
@@ -270,7 +266,6 @@ impl<'de> Deserialize<'de> for MizeId {
                     //scip the #
                     let mod_name: String = iter.clone().take_while(|ch| ch != &'#' || ch != &'/').collect();
                     let id: String = iter.collect();
-                    println!("in deserialize..... mod_name: --{}-- id: --{}--", mod_name.clone(), id.clone());
                     return Ok(MizeId::Module { mod_name, id});
                 } else {
                     let id: u64 = match v.parse(){
@@ -292,6 +287,29 @@ impl<'de> Deserialize<'de> for MizeId {
         }
 
         deserializer.deserialize_str(MizeIdVisitor {})
+    }
+}
+
+
+impl Serialize for JsonMessage {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer 
+    {
+
+        match self {
+            JsonMessage::ErrMsg(err_msg) => {
+                ErrMessage::serialize(&err_msg, serializer)
+            },
+
+            JsonMessage::ForArr(arr_msg) => {
+                ArrayMessage::serialize(&arr_msg, serializer)
+            },
+
+            JsonMessage::ForItem(item_msg) => {
+                ItemMessage::serialize(&item_msg, serializer)
+            },
+        }
     }
 }
 

@@ -127,42 +127,22 @@ pub enum ModuleKind {
     Extern(),
 }
 
-#[derive(Deserialize, Serialize)]
-pub enum Render {
-    WebComponent{
-        id: String, 
-        webroot: String,
-        main: String,
-        folder: String,
-    },
-    RenderView{
-        id: String,
-        main: String,
-        folder: String,
-    },
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Render {
+    #[serde(rename="type")]
+    render_type: RenderType,
+    webroot: String,
+    name: String,
+    main: String,
+    folder: String,
 }
 
-impl Render {
-    fn get_id(&self) -> String {
-        match self {
-            Render::WebComponent{id, webroot, main, folder} => id.to_owned(),
-            Render::RenderView{id, main, folder} => id.to_owned(),
-        }
-    }
-
-    fn get_folder(&self) -> String {
-        match self {
-            Render::WebComponent{id, webroot, main, folder} => folder.to_owned(),
-            Render::RenderView{id, main, folder} => folder.to_owned(),
-        }
-    }
-
-    fn get_main(&self) -> String {
-        match self {
-            Render::WebComponent{id, webroot, main, folder} => main.to_owned(),
-            Render::RenderView{id, main, folder} => main.to_owned(),
-        }
-    }
+#[derive(Deserialize, Serialize, Debug)]
+pub enum RenderType {
+    #[serde(rename="json-ui")]
+    JsonUi,
+    #[serde(rename="webcomponent")]
+    WebComponent,
 }
 
 trait SendMize<T> where T: Into<MizeMessage> {
@@ -227,46 +207,7 @@ pub async fn run_server(args: Vec<String>) {
     //create the itemstore
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
-    //load modules and renders
-    let mr_folders = std::fs::read_dir(mize_folder.clone() + "/mr")
-        .expect("error reading the modules-renders dir in the mize-folder")
-        .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
-    
-    let mut renders_toml: Vec<toml::Value> = Vec::new();
-
-    for mr_folder in mr_folders {
-
-        let mr_folder = match mr_folder {
-            Err(_) => {MizeError::new(11).extra_msg("Error unwrapping DirEntry").handle(); continue;},
-            Ok(idk) => idk,
-        };
-
-        let mr_string = match fs::read_to_string(format!("{}/mize.toml", mr_folder.path().display())) {
-            Err(_) => {MizeError::new(11).extra_msg("Error parsing mize.toml file to a toml string").handle(); continue;},
-            Ok(idk) => idk,
-        };
-
-        let mr_data = match mr_string.parse::<toml::Value>() {
-            Err(_) => {MizeError::new(11).extra_msg("Error parsing mize.toml string to toml::Value").handle(); continue;},
-            Ok(idk) => idk,
-        };
-
-        if let Some(local_renders) = mr_data.get("render") {
-            if let toml::Value::Array(arr) = local_renders {
-                renders_toml.extend(arr.clone());
-            }
-        }
-    }
-
-    let mut renders: Vec<Render> = Vec::new();
-
-    for render_toml in renders_toml {
-        let render = match Render::deserialize(render_toml) {
-            Ok(render) => render,
-            Err(err) => {MizeError::new(11).handle(); continue;}
-        };
-        renders.push(render);
-    }
+    let renders = load_mr(mize_folder.clone()).expect("Error loading Modules and Renders");
 
     // Collection of all the things, that most functions need
     let mutexes: Mutexes = Mutexes {
@@ -316,12 +257,15 @@ async fn axum_server(mize_folder: String, mutexes: Mutexes) {
     let renders = mutexes.renders.lock().await;
 
     for render in &*renders {
-        if let Render::WebComponent { id, webroot, main, folder } = render {
-            let url_path = String::from("/api/render/") + &id + "/webroot";
-            let file_path = mutexes.mize_folder.clone() + "/modules-renders/" + &folder[..] + "/" + &webroot.clone()[..];
-            let serve_dir = get_service(ServeDir::new(&file_path)).handle_error(handle_error);
+        match render.render_type {
+            RenderType::JsonUi => {},
+            RenderType::WebComponent => {
+                let url_path = String::from("/api/render/") + &render.name + "/webroot";
+                let file_path = mutexes.mize_folder.clone() + "/mr/" + &render.folder[..] + "/" + &render.webroot.clone()[..];
+                let serve_dir = get_service(ServeDir::new(&file_path)).handle_error(handle_error);
 
-            app = app.nest_service(&url_path, serve_dir);
+                app = app.nest_service(&url_path, serve_dir);
+            },
         }
     }
     drop(renders);
@@ -347,15 +291,25 @@ async fn render_item(uri: Uri) -> impl IntoResponse {
 async fn get_render_main(extract::Path(id): extract::Path<String>, State(mutexes): State<Mutexes>) -> http::Response<String> {
     let renders = &*mutexes.renders.lock().await;
 
-    let render = renders.iter().filter(|&render| render.get_id() == id).nth(0)
-        .unwrap_or(renders.iter().filter(|&render| render.get_id() == "mize-mmejs").nth(0).expect("mize-mmejs"));
+    let render = renders.iter().filter(|&render| render.name == id).nth(0)
+        .unwrap_or(renders.iter().filter(|&render| render.name == "mize-mmejs").nth(0).expect("mize-mmejs"));
 
-    let file_name = mutexes.mize_folder.clone() + "/mr/" + &render.get_folder() + "/" + &render.get_main();
+    let file_path = mutexes.mize_folder.clone() + "/mr/" + &render.folder + "/" + &render.main;
 
-    Response::builder()
-        .header("content-type", "application/javascript")
-        .status(StatusCode::OK)
-        .body(fs::read_to_string(file_name).unwrap()).unwrap()
+    match render.render_type {
+        RenderType::JsonUi => {
+            return Response::builder()
+                .header("content-type", "application/json")
+                .status(StatusCode::OK)
+                .body(fs::read_to_string(file_path).unwrap()).unwrap();
+        },
+        RenderType::WebComponent => {
+            return Response::builder()
+                .header("content-type", "application/javascript")
+                .status(StatusCode::OK)
+                .body(fs::read_to_string(file_path).unwrap()).unwrap();
+        },
+    }
 }
 
 async fn websocket_handler(
@@ -512,6 +466,76 @@ async fn handle_websocket_connection(
             },
         };
     };
+}
+
+fn load_mr(mize_folder: String) -> Result<Vec<Render>, MizeError> {
+    //load modules and renders
+
+    let mr_folders = std::fs::read_dir(mize_folder.clone() + "/mr")
+        .expect("error reading the modules-renders dir in the mize-folder")
+        .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+    
+    let mut renders: Vec<Render> = Vec::new();
+
+    for mr_folder in mr_folders {
+
+        let mr_folder = match mr_folder {
+            Err(_) => {MizeError::new(11).extra_msg("Error unwrapping DirEntry").handle(); continue;},
+            Ok(idk) => idk,
+        };
+
+        let mr_string = match fs::read_to_string(format!("{}/mize.toml", mr_folder.path().display())) {
+            Err(_) => {MizeError::new(11).extra_msg("Error parsing mize.toml file to a toml string").handle(); continue;},
+            Ok(idk) => idk,
+        };
+
+        let mut mr_data = match mr_string.parse::<toml::Value>() {
+            Err(_) => {MizeError::new(11).extra_msg("Error parsing mize.toml string to toml::Value").handle(); continue;},
+            Ok(idk) => idk,
+        };
+
+        if let Some(local_renders) = mr_data.get_mut("render") {
+            if let Some(arr) = local_renders.as_array_mut(){
+                //add folder to local_renders
+                for mut el in arr.iter_mut() {
+                    if let Some(table) = el.as_table_mut(){
+                        table.insert("folder".to_owned(), toml::Value::String(mr_folder.file_name().into_string().unwrap()));
+                        table.insert("type".to_owned(), toml::Value::String("json-ui".to_owned()));
+                    }
+
+                    let render = match Render::deserialize(el.clone()) {
+                        Ok(render) => render,
+                        Err(err) => {MizeError::new(11).extra_msg(&format!("{}", err)).handle(); continue;}
+                    };
+
+                    renders.push(render);
+                }
+            }
+        }
+
+        if let Some(local_webcomponents) = mr_data.get_mut("webcomponent") {
+            if let Some(arr) = local_webcomponents.as_array_mut(){
+                //add folder to local_renders
+                for mut el in arr.iter_mut() {
+                    if let Some(table) = el.as_table_mut(){
+                        table.insert("folder".to_owned(), toml::Value::String(mr_folder.file_name().into_string().unwrap()));
+                        table.insert("type".to_owned(), toml::Value::String("webcomponent".to_owned()));
+                        table.insert("webroot".to_owned(), toml::Value::String("".to_owned()));
+                    }
+
+                    let render = match Render::deserialize(el.clone()) {
+                        Ok(render) => render,
+                        Err(err) => {MizeError::new(11).extra_msg(&format!("{}", err)).handle(); continue;}
+                    };
+
+                    renders.push(render);
+                }
+            }
+        }
+
+    }
+
+    return Ok((renders));
 }
 
 
