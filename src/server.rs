@@ -494,6 +494,7 @@ fn load_mr(mize_folder: String) -> Result<Vec<Render>, MizeError> {
                     if let Some(table) = el.as_table_mut(){
                         table.insert("folder".to_owned(), toml::Value::String(mr_folder.file_name().into_string().unwrap()));
                         table.insert("type".to_owned(), toml::Value::String("json-ui".to_owned()));
+                        table.insert("webroot".to_owned(), toml::Value::String("".to_owned()));
                     }
 
                     let render = match Render::deserialize(el.clone()) {
@@ -513,7 +514,6 @@ fn load_mr(mize_folder: String) -> Result<Vec<Render>, MizeError> {
                     if let Some(table) = el.as_table_mut(){
                         table.insert("folder".to_owned(), toml::Value::String(mr_folder.file_name().into_string().unwrap()));
                         table.insert("type".to_owned(), toml::Value::String("webcomponent".to_owned()));
-                        table.insert("webroot".to_owned(), toml::Value::String("".to_owned()));
                     }
 
                     let render = match Render::deserialize(el.clone()) {

@@ -44,19 +44,43 @@ impl Item {
     }
 
     pub fn apply_delta(&mut self, delta: Delta) -> Result<(), MizeError> {
-        for (path, value) in delta.raw {
+        println!("DELTA: {:?}", delta);
+        for (path, value) in delta.delta {
             let mut to_replace = &mut self.json;
             for name in path {
-                to_replace = if to_replace.get(&name).is_none() {
+
+//                if let Some(inner) = to_replace.get(&name) {
+//                    to_replace = inner
+
+//                } else if let JsonValue::Object(ob) = to_replace {
+                    //let mut new_map = JsonValue::Object(serde_json::Map::new());
+                    //ob.insert(name, new_map);
+                    //to_replace = &mut new_map;
+//                } else {
+//                    return Err(MizeError::new(11)
+//                        .extra_msg("Error applying a Delta to an Item. The path could not be followed."));
+//                }
+
+                to_replace = if to_replace.get_mut(&name).is_some() {
+                    to_replace.get_mut(&name).ok_or(MizeError::new(11))?
+                } else if to_replace.is_object() {
+
+                    let mut new_map = JsonValue::Object(serde_json::Map::new());
+                    to_replace.as_object_mut().ok_or(MizeError::new(11))?.insert(name.clone(), new_map);
+                    to_replace.get_mut(&name).ok_or(MizeError::new(11))?
+
+                } else {
                     return Err(MizeError::new(11)
                         .extra_msg("Error applying a Delta to an Item. The path could not be followed."));
-                } else {
-                    to_replace.get_mut(&name).ok_or(MizeError::new(11))?
                 };
+
             }
+
+            // replace with value from the delta
             *to_replace = value;
         }
 
+        println!("After applying a Delta, {}", self.json);
         return Ok(())
     }
 
@@ -80,9 +104,9 @@ impl Itemstore {
                 let data = serde_json::json!({
                         "num_of_items": 1,
                         "next_free_id": 1,
-                        "_commit": 0,
-                        "mize-type": "mize-main",
-                        "mize-id": "0"
+                        "__commit__": 0,
+                        "__type__": "mize-main",
+                        "__item__": "0"
                 });
 
                 tr.set(0u64.to_be_bytes(), data.to_string()).await?;
@@ -126,6 +150,7 @@ impl Itemstore {
 
 
     pub async fn update(&self, id: u64, delta: Delta) -> Result<(), MizeError>{
+        println!("in itemstore.update");
 
         let mut tr = self.db.transaction(true, true).await?;
 
@@ -136,6 +161,7 @@ impl Itemstore {
         let mut item = Item::from_bytes(item_bytes)?;
 
         item.apply_delta(delta)?;
+        println!("after applying delta: {:?}", item);
 
         tr.set(id.to_be_bytes(), serde_json::to_string(&item)?).await?;
 

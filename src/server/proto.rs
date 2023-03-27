@@ -136,6 +136,7 @@ pub struct UpdateRequestMessage {
     //pub cat: String,
     //cmd: String,
     id: MizeId,
+    #[serde(flatten)]
     delta: Delta,
 }
 
@@ -144,13 +145,13 @@ pub struct UpdateMessage {
     //pub cat: String,
     //cmd: String,
     id: MizeId,
-    deltas: Delta,
+    #[serde(flatten)]
+    delta: Delta,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
-    #[serde(flatten)]
-    pub raw: Vec<(Path, JsonValue)>,
+    pub delta: Vec<(Path, JsonValue)>,
 }
 
 type Path = Vec<String>;
@@ -379,7 +380,7 @@ pub async fn handle_update(id: MizeId, delta: Delta, mutexes: Mutexes, origin: O
 
     let itemstore = mutexes.itemstore.lock().await;
     if let MizeId::Local(id) = id {
-        itemstore.update(id, delta);
+        itemstore.update(id, delta).await?;
     } else {
         return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
     }
