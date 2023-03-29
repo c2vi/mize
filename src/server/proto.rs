@@ -77,6 +77,7 @@ pub enum JsonMessage {
 pub struct GetItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -84,6 +85,7 @@ pub struct GetItemMessage {
 pub struct GetSubMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -91,6 +93,7 @@ pub struct GetSubMessage {
 pub struct GiveItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
     item: Item,
 }
@@ -99,6 +102,7 @@ pub struct GiveItemMessage {
 pub struct CreateItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
     item: Item,
 }
@@ -107,6 +111,7 @@ pub struct CreateItemMessage {
 pub struct CreatedIdMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -114,6 +119,7 @@ pub struct CreatedIdMessage {
 pub struct DeleteItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -121,6 +127,7 @@ pub struct DeleteItemMessage {
 pub struct SubItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -128,6 +135,7 @@ pub struct SubItemMessage {
 pub struct UnsubItemMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
 }
 
@@ -135,6 +143,7 @@ pub struct UnsubItemMessage {
 pub struct UpdateRequestMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
     #[serde(flatten)]
     delta: Delta,
@@ -144,6 +153,7 @@ pub struct UpdateRequestMessage {
 pub struct UpdateMessage {
     //pub cat: String,
     //cmd: String,
+    #[serde(flatten)]
     id: MizeId,
     #[serde(flatten)]
     delta: Delta,
@@ -156,14 +166,43 @@ pub struct Delta {
 
 type Path = Vec<String>;
 
+type Update = Vec<(MizeId, Delta)>;
+
 
 #[derive(Debug, Default, Clone)]
-pub enum MizeId {
-    Module{mod_name: String, id: String},
-    Upstream(String),
+pub struct MizeId {
+    #[serde(rename="id")]
+    main: String,
+}
+
+pub enum MizeIdKind<'a>{
+    Module{mod_name: &'a str, id: &'a str},
+    Upstream(&'a server::Peer),
     Local(u64),
-    #[default]
-    None,
+}
+
+//###//===================================================
+//impls
+
+impl core::hash::Hash for MizeId {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.main.hash(state);
+    }
+}
+
+impl MizeId {
+    pub fn as_string(&self) -> String {
+        match self {
+            MizeId::Module { mod_name, id } => {
+                String::from(mod_name) + id
+            },
+            MizeId::Local(num) => {
+                format!("{}", num)
+            },
+            MizeId::Upstream(string) => string.to_owned(),
+            MizeId::None => {"".to_owned()},
+        }
+    }
 }
 
 
@@ -189,92 +228,6 @@ impl From<CreatedIdMessage> for MizeMessage {
     fn from(give: CreatedIdMessage) -> MizeMessage {
         let two: JsonMessage = give.into();
         return two.into();
-    }
-}
-
-impl MizeId {
-    pub fn as_string(&self) -> String {
-        match self {
-            MizeId::Module { mod_name, id } => {
-                String::from(mod_name) + id
-            },
-            MizeId::Local(num) => {
-                format!("{}", num)
-            },
-            MizeId::Upstream(string) => string.to_owned(),
-            MizeId::None => {"".to_owned()},
-        }
-    }
-}
-
-impl Serialize for MizeId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer 
-    {
-        let id_string = match self {
-            MizeId::Module { mod_name, id } => {String::from("#") + mod_name + id},
-            MizeId::Upstream(id) => id.to_owned(),
-            MizeId::Local(num) => {format!("{}", num)},
-            MizeId::None => {"".to_owned()},
-        };
-        serializer.serialize_str(&id_string)
-    }
-}
-
-impl<'de> Deserialize<'de> for MizeId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct MizeIdVisitor;
-
-        impl<'de> Visitor<'de> for MizeIdVisitor {
-            type Value = MizeId;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a MizeId id, which is a string that my start with @ or # ")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                let first_char = match v.chars().nth(0) {
-                    Some(ch) => ch,
-                    None => {
-                        return Err(de::Error::invalid_value(
-                                de::Unexpected::Other("hi, what is this Unexpected for????"), &"The id was empty"));
-                    },
-                };
-
-                if (first_char == '#'){
-                    let iter = v.chars();
-
-                    //scip the #
-                    let mod_name: String = iter.clone().take_while(|ch| ch != &'#' || ch != &'/').collect();
-                    let id: String = iter.collect();
-                    return Ok(MizeId::Module { mod_name, id});
-                } else {
-                    let id: u64 = match v.parse(){
-                        Ok(num) => num,
-                        Err(_) => {
-                            return Err(de::Error::invalid_value(de::Unexpected::Other("hi, what is this Unexpected for????"), &"Could not parse the id to an u64"));
-                        },
-                    };
-                    return Ok(MizeId::Local(id));
-                }
-            }
-
-//            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-//            where
-//                A: serde::de::MapAccess<'de>,
-//            {
-
-//            }
-        }
-
-        deserializer.deserialize_str(MizeIdVisitor {})
     }
 }
 
@@ -339,8 +292,22 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
         }
 
 
-        JsonMessage::UpdateRequest(msg) => {
-            handle_update(msg.id, msg.delta, mutexes.clone(), Some(origin)).await?;
+        JsonMessage::UpdateRequest(mut msg) => {
+            let update: Update = vec![(msg.id, msg.delta)];
+            let new_update = handle_update(update , mutexes.clone(), Some(origin)).await?;
+
+            let subs = mutexes.subs.lock().await;
+
+            for (id, delta) in new_update {
+                //send that delta to every origin that is subbed the item
+                let peers = subs.get(&id).ok_or(MizeError::new(11))?;
+                let message = UpdateMessage{id, delta};
+
+                for peer in peers {
+                    //TODO: send should only take a reference
+                    peer.send(message.clone())
+                }
+            }
         },
 
 
@@ -374,17 +341,19 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 }
 
 
-pub async fn handle_update(id: MizeId, delta: Delta, mutexes: Mutexes, origin: Option<Peer>) -> Result<(), MizeError>{
+pub async fn handle_update(update: Update, mutexes: Mutexes, origin: Option<Peer>) -> Result<Update, MizeError> {
     //TODO: run update code from modules and types
 
-
     let itemstore = mutexes.itemstore.lock().await;
-    if let MizeId::Local(id) = id {
-        itemstore.update(id, delta).await?;
-    } else {
-        return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
+
+    for (id, delta) in update {
+        if let MizeId::Local(id) = id {
+            itemstore.update(id, delta).await?;
+        } else {
+            return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
+        }
     }
 
-    Ok(())
+    Ok(update)
 }
 

@@ -14,9 +14,11 @@ use crate::error;
 use crate::error::MizeError;
 use crate::error::ERRORS;
 use crate::server::proto::MizeMessage;
+use crate::server::proto::MizeId;
 
 use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
+use uuid;
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
 use tokio_stream::wrappers::ReceiverStream;
@@ -78,7 +80,7 @@ static MAX_DATA_FILE_SIZE: usize = 3_000_000_000;
 pub enum Peer {
     Client(Client), //the client id
     Module(Module), //Module_name
-    Upstream(String), //a hostname Type, but for now just a string
+    Upstream(Upstream), //a hostname Type, but for now just a string
 }
 
 impl Peer {
@@ -99,6 +101,9 @@ impl Peer {
     }
 }
 
+pub struct Upstream {
+    id: uuid::uuid,
+}
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -164,11 +169,12 @@ pub struct Mutexes {
     next_free_client_id: Arc<Mutex<u64>>,
     clients: Arc<Mutex<Vec<Client>>>,
     modules: Arc<Mutex<Vec<Module>>>,
-    subs: Arc<Mutex<HashMap<String, Vec<Peer>>>>,
+    subs: Arc<Mutex<HashMap<MizeId, Vec<Peer>>>>,
     renders: Arc<Mutex<Vec<Render>>>,
     //maybe a list of upstream servers??
     itemstore: Arc<Mutex<Itemstore>>,
     mize_folder: String,
+    server_uuid: uuid::Uuid,
 }
 
 impl Mutexes {
@@ -181,6 +187,7 @@ impl Mutexes {
             subs: Arc::clone(&mutexes.subs),
             mize_folder: mutexes.mize_folder.clone(),
             itemstore: Arc::clone(&mutexes.itemstore),
+            server_uuid: mutexes.server_uuid,
         }
     }
 }
@@ -207,6 +214,9 @@ pub async fn run_server(args: Vec<String>) {
     //create the itemstore
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
+    //create mize.toml with id inside in folder if net yet done
+    let server_uuid = uuid::Uuid::new_4();
+
     let renders = load_mr(mize_folder.clone()).expect("Error loading Modules and Renders");
 
     // Collection of all the things, that most functions need
@@ -218,7 +228,9 @@ pub async fn run_server(args: Vec<String>) {
         renders: Arc::new(Mutex::new(renders)),
         itemstore: Arc::new(Mutex::new(itemstore)),
         mize_folder: mize_folder.clone(),
+        server_uuid,
     };
+
 
     //listen on the local unix socket
     //local_socket_server(mize_folder);
