@@ -143,7 +143,7 @@ impl Itemstore {
 
         //handle update to item0
         let delta_item0: Delta = serde_json::from_str(&format!("[[[\"num_of_items\"], {}], [[\"next_free_id\"], {}]]", new_num, new_next_id))?;
-        proto::handle_update(proto::MizeId::Local(0), delta_item0, mutexes.clone(), None).await?;
+        proto::handle_update(vec![(proto::MizeId::new(format!("0")), delta_item0)], mutexes.clone(), None).await?;
 
         return Ok(new_id);
     }

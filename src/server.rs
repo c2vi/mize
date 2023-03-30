@@ -101,8 +101,9 @@ impl Peer {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Upstream {
-    id: uuid::uuid,
+    id: uuid::Uuid,
 }
 
 #[derive(Clone, Debug)]
@@ -215,7 +216,7 @@ pub async fn run_server(args: Vec<String>) {
     let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
     //create mize.toml with id inside in folder if net yet done
-    let server_uuid = uuid::Uuid::new_4();
+    let server_uuid = uuid::Uuid::new_v4();
 
     let renders = load_mr(mize_folder.clone()).expect("Error loading Modules and Renders");
 

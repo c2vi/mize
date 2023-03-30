@@ -1,4 +1,5 @@
 use derive_more::From;
+use futures_util::stream::select_all::Iter;
 use serde::de::Error;
 use serde_json::json;
 use serde::de::Visitor;
@@ -169,7 +170,7 @@ type Path = Vec<String>;
 type Update = Vec<(MizeId, Delta)>;
 
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
 pub struct MizeId {
     #[serde(rename="id")]
     main: String,
@@ -184,25 +185,49 @@ pub enum MizeIdKind<'a>{
 //###//===================================================
 //impls
 
-impl core::hash::Hash for MizeId {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.main.hash(state);
-    }
-}
-
 impl MizeId {
-    pub fn as_string(&self) -> String {
-        match self {
-            MizeId::Module { mod_name, id } => {
-                String::from(mod_name) + id
+    pub fn new(main: String) -> MizeId {
+        MizeId { main }
+    }
+
+    pub fn as_string(self) -> String {
+        self.main
+    }
+
+    pub fn new_local(local_part: &str) -> MizeId {
+        MizeId { main: local_part.to_owned() }
+    }
+
+    pub fn kind(&self) -> Result<MizeIdKind, MizeError> {
+        let first_char = match self.main.chars().nth(0) {
+            Some(ch) => ch,
+            None => {
+                return Err(MizeError::new(11).extra_msg("Couldn't get the first char from a MizeId"));
             },
-            MizeId::Local(num) => {
-                format!("{}", num)
-            },
-            MizeId::Upstream(string) => string.to_owned(),
-            MizeId::None => {"".to_owned()},
+        };
+
+        if (first_char == '#'){
+            let iter = self.main.chars();
+
+            //scip the #
+            let mod_name_end = iter.enumerate().find(|&r| r.1 == '#' || r.1 == '/').ok_or(MizeError::new(11))?;
+
+            let mod_name = &self.main[0..mod_name_end.0];
+            let id = &self.main[mod_name_end.0..];
+
+            return Ok(MizeIdKind::Module{ mod_name, id});
+
+        } else {
+            let id: u64 = match self.main.parse(){
+                Ok(num) => num,
+                Err(_) => {
+                    return Err(MizeError::new(11).extra_msg("Couldn't parse a local id into an integer"))
+                },
+            };
+            return Ok(MizeIdKind::Local(id));
         }
     }
+
 }
 
 
@@ -231,6 +256,13 @@ impl From<CreatedIdMessage> for MizeMessage {
     }
 }
 
+impl From<UpdateMessage> for MizeMessage {
+    fn from(give: UpdateMessage) -> MizeMessage {
+        let two: JsonMessage = give.into();
+        return two.into();
+    }
+}
+
 //###//===================================================
 // functions
 
@@ -239,13 +271,13 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
     match msg {
 
         JsonMessage::Get(msg) => {
-            match msg.id {
+            match msg.id.kind()? {
                 //MizeId::Module { mod_name, id } => {
                 //TODO: get type of module with mod_name .... and then either forward msg or call
                 //module_get_code
                 //},
 
-                MizeId::Local(id) => {
+                MizeIdKind::Local(id) => {
                     let itemstore = mutexes.itemstore.lock().await;
                     let response = GiveItemMessage {
                         id: msg.id,
@@ -254,8 +286,8 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
                     origin.send(response).await;
                 },
 
-                _ => {return Err(MizeError::new(11).extra_msg("id types not implemented"));},
-            }
+                _ => {return Err(MizeError::new(11).extra_msg("id type is not implemented"));},
+            };
             return Ok(());
         },
 
@@ -264,19 +296,19 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 
             //sub to item
             let mut subs = mutexes.subs.lock().await;
-            if let Some(mut vec_ids) = subs.get_mut(&msg.id.as_string()) {
+            if let Some(mut vec_ids) = subs.get_mut(&msg.id) {
                 vec_ids.push(origin.clone());
             } else {
-                subs.insert(msg.id.as_string(), vec![origin.clone()]);
+                subs.insert(msg.id.clone(), vec![origin.clone()]);
             };
 
-            match msg.id {
+            match msg.id.kind()? {
                 //MizeId::Module { mod_name, id } => {
                 //TODO: get type of module with mod_name .... and then either forward msg or call
                 //module_get_code
                 //},
 
-                MizeId::Local(id) => {
+                MizeIdKind::Local(id) => {
                     let itemstore = mutexes.itemstore.lock().await;
                     let response = GiveItemMessage {
                         id: msg.id,
@@ -305,7 +337,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 
                 for peer in peers {
                     //TODO: send should only take a reference
-                    peer.send(message.clone())
+                    peer.send(message.clone()).await
                 }
             }
         },
@@ -314,7 +346,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
         JsonMessage::Create(msg) => {
             let itemstore = mutexes.itemstore.lock().await;
             let id = itemstore.create(msg.item, mutexes.clone()).await?;
-            let response = CreatedIdMessage {id: MizeId::Local(id)};
+            let response = CreatedIdMessage {id: MizeId::new(format!("{}", id))};
 
             origin.send(response).await;
             return Ok(());
@@ -322,8 +354,8 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 
 
         JsonMessage::Delete(msg) => {
-            match msg.id {
-                MizeId::Local(id) => {
+            match msg.id.kind()? {
+                MizeIdKind::Local(id) => {
                     let itemstore = mutexes.itemstore.lock().await;
                     itemstore.delete(id).await?;
                     return Ok(());
@@ -346,8 +378,8 @@ pub async fn handle_update(update: Update, mutexes: Mutexes, origin: Option<Peer
 
     let itemstore = mutexes.itemstore.lock().await;
 
-    for (id, delta) in update {
-        if let MizeId::Local(id) = id {
+    for (id, delta) in update.clone() {
+        if let MizeIdKind::Local(id) = id.kind()? {
             itemstore.update(id, delta).await?;
         } else {
             return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
