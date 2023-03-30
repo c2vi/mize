@@ -15,10 +15,12 @@ use crate::error::MizeError;
 use crate::error::ERRORS;
 use crate::server::proto::MizeMessage;
 use crate::server::proto::MizeId;
+use crate::error::MizeResultExtension;
 
 use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
-use uuid;
+use uuid::Uuid;
+use std::str::FromStr;
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
 use tokio_stream::wrappers::ReceiverStream;
@@ -103,7 +105,7 @@ impl Peer {
 
 #[derive(Clone, Debug)]
 pub struct Upstream {
-    id: uuid::Uuid,
+    id: Uuid,
 }
 
 #[derive(Clone, Debug)]
@@ -175,7 +177,7 @@ pub struct Mutexes {
     //maybe a list of upstream servers??
     itemstore: Arc<Mutex<Itemstore>>,
     mize_folder: String,
-    server_uuid: uuid::Uuid,
+    server_uuid: Uuid,
 }
 
 impl Mutexes {
@@ -212,13 +214,9 @@ pub async fn run_server(args: Vec<String>) {
         }
     }
 
-    //create the itemstore
-    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
-    //create mize.toml with id inside in folder if net yet done
-    let server_uuid = uuid::Uuid::new_v4();
+    let (server_uuid, itemstore, renders) = init_server(mize_folder.clone()).await.extra_msg("Could not init server").handle().is_critical();
 
-    let renders = load_mr(mize_folder.clone()).expect("Error loading Modules and Renders");
 
     // Collection of all the things, that most functions need
     let mutexes: Mutexes = Mutexes {
@@ -542,6 +540,63 @@ fn load_mr(mize_folder: String) -> Result<Vec<Render>, MizeError> {
     }
 
     return Ok((renders));
+}
+
+async fn init_server(mize_folder: String) -> Result<(Uuid, Itemstore, Vec<Render>), MizeError> {
+
+    let server_uuid;
+
+    //create mize.toml with id inside in folder if net yet done
+    match fs::read_to_string(format!("{}/mize.toml", mize_folder)) {
+        Err(err) => {
+            match err.kind() {
+                std::io::ErrorKind::NotFound => {
+                    //create the file with new uuid
+                    server_uuid = uuid::Uuid::new_v4();
+                    let mut toml_val = toml::Value::Table(toml::map::Map::new());
+                    toml_val.as_table_mut()
+                        .ok_or(MizeError::new(11))?
+                        .insert("uuid".to_owned(), toml::Value::String(server_uuid.to_string()));
+
+                    fs::write(format!("{}/mize.toml", mize_folder), toml::to_string(&toml_val)
+                        .map_err(|e| MizeError::new(11).extra_msg(e))?)
+                        .map_err(|e| MizeError::new(11).extra_msg(e))?;
+
+                }
+                _ => {
+                    server_uuid = uuid::Uuid::new_v4();
+                    Err(err)
+                        .map_err(|e| MizeError::new(11).extra_msg(e))
+                        .extra_msg("Could not read <mize-folder>/mize.toml file")?;
+                }
+            }
+        },
+        Ok(toml_string) => {
+            let mut toml_val = toml_string.parse::<toml::Value>().map_err(|e| MizeError::new(11).extra_msg(e))?;
+
+            if let Some(uuid) = toml_val.get("uuid") {
+                server_uuid = Uuid::from_str(uuid.as_str().ok_or(MizeError::new(11))?)
+                    .map_err(|e| MizeError::new(11).extra_msg(e))?;
+            } else {
+                //generate uuid and write that to toml file
+                server_uuid = uuid::Uuid::new_v4();
+                toml_val.as_table_mut().ok_or(MizeError::new(11))?.insert("uuid".to_owned(), toml::Value::String(server_uuid.to_string()));
+
+                fs::write(format!("{}/mize.toml", mize_folder), toml::to_string(&toml_val)
+                    .map_err(|e| MizeError::new(11).extra_msg(e))?)
+                    .map_err(|e| MizeError::new(11).extra_msg(e))?;
+            }
+        },
+    };
+
+    //create the itemstore
+    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/rocksdb").await.expect("error creating itemstore");
+
+    let renders = load_mr(mize_folder.clone())
+        .map_err(|e| MizeError::new(11))
+        .extra_msg("Error loading Modules and Renders")?;
+
+    return Ok((server_uuid, itemstore, renders));
 }
 
 

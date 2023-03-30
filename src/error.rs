@@ -1,5 +1,6 @@
 
 use std::collections::HashMap;
+use std::fmt::format;
 use std::string::FromUtf8Error;
 use toml::Value;
 use colored::Colorize;
@@ -46,7 +47,7 @@ fn parse_errors() -> HashMap<u32, MizeError>{
                     panic!("category value exists in errors.toml on error obect with code {}, but is not a String", code)
             };
 
-            let error = MizeError{code, message, category, extra_msg: None, caused_by_msg: None, code_location: None};
+            let error = MizeError{code, message, category, extra_msg: Vec::new(), caused_by_msg: None, code_location: None};
 
             map.insert(code, error);
         }
@@ -63,7 +64,7 @@ pub struct MizeError {
     pub category: String,
     pub code: u32,
     pub message: String,
-    pub extra_msg: Option<String>,
+    pub extra_msg: Vec<String>,
     pub caused_by_msg: Option<CausedByMessage>,
     pub code_location: Option<MizeCodeLocation>,
 }
@@ -104,15 +105,17 @@ impl MizeError {
                 category: "error with error system".to_string(),
                 code: 114,
                 message: format!("The error with code {} was not found in the Errors that where imported from the errors.toml file at build time.", code),
-                extra_msg: None,
+                extra_msg: Vec::new(),
                 caused_by_msg: None,
                 code_location: Some(caller_location.into()),
             };
         }
     }
 
-    pub fn extra_msg(mut self, msg: &str) -> MizeError {
-        self.extra_msg = Some(msg.to_string());
+    pub fn extra_msg<E>(mut self, msg: E) -> MizeError 
+        where E: std::fmt::Display
+    {
+        self.extra_msg.push(format!("{}", msg));
         return self;
     }
     
@@ -145,6 +148,10 @@ impl MizeError {
         return self.send().add_to_err_item().write_to_stderr();
     }
 
+    pub fn is_critical(self){
+        panic!("Aborting because of a critical Error")
+    }
+
     pub fn to_json(&self) -> JsonValue{
         if let Ok(string) = serde_json::to_string(self) {
             if let Ok(json) = serde_json::from_str(&string) {
@@ -174,6 +181,40 @@ impl MizeError {
     }
 }
 
+pub trait MizeResultExtension<T> {
+    fn extra_msg<E>(self, msg: E) -> Result<T, MizeError>
+        where E: std::fmt::Display
+    ;
+    fn handle(self) -> Result<T, MizeError>;
+
+    fn is_critical(self) -> T;
+}
+
+impl<T> MizeResultExtension<T> for Result<T, MizeError> {
+    fn extra_msg<E>(mut self, msg: E) -> Result<T, MizeError>
+        where E: std::fmt::Display
+    {
+        match self {
+            Err(ref mut e) => {
+                e.extra_msg.push(format!("{}", msg));
+                return self;
+            },
+            Ok(something) => Ok(something),
+        }
+    }
+    fn handle(self) -> Result<T, MizeError> {
+        match self {
+            Err(e) => {
+                Err(e.send().add_to_err_item().write_to_stderr())
+            },
+            Ok(something) => Ok(something)
+        }
+    }
+    fn is_critical(self) -> T {
+        self.expect("Aborting because of a critical Error")
+    }
+}
+
 impl From<FromUtf8Error> for MizeError {
     fn from(utf_err: FromUtf8Error) -> MizeError{
         MizeError::new(109).extra_msg("std::string::FromUtf8Error while parsing something from the message")
@@ -191,6 +232,7 @@ impl From<serde_json::Error> for MizeError {
         MizeError::new(11).extra_msg("From an serde_json::Error. TODO: include actual error msg.")
     }
 }
+
 
 
 
