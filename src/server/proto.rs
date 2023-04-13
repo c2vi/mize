@@ -332,7 +332,10 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 
             for (id, delta) in new_update {
                 //send that delta to every origin that is subbed the item
-                let peers = subs.get(&id).ok_or(MizeError::new(11))?;
+                let peers = match subs.get(&id) {
+                    Some(vec) => vec,
+                    None => continue,
+                };
                 let message = UpdateMessage{id, delta};
 
                 for peer in peers {

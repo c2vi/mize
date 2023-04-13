@@ -461,13 +461,23 @@ async fn handle_websocket_connection(
             }
 
 
-            _ => {
+            Message::Ping(_) => {
                 let err = MizeError::new(11)
-                    .extra_msg("unhandeld WebSocket-Message type")
+                    .extra_msg("unhandeld WebSocket-Message type: Ping")
                     .handle();
 
                 msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
             },
+
+
+            Message::Pong(_) => {
+                let err = MizeError::new(11)
+                    .extra_msg("unhandeld WebSocket-Message type: Pong")
+                    .handle();
+
+                msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
+            },
+
         };
     };
 }
@@ -543,6 +553,14 @@ fn load_mr(mize_folder: String) -> Result<Vec<Render>, MizeError> {
 }
 
 async fn init_server(mize_folder: String) -> Result<(Uuid, Itemstore, Vec<Render>), MizeError> {
+    /*
+     * This function initializes the server.
+     *  - create a mize folder if not there yet
+     *  - get or generate the uuid for the server
+     *  - load the renders and modules from the <mize-folder>/mr folder
+     *  - create a surrealdb::Datastore inside the <mize-folder>/db folder
+     *
+     */
 
     let server_uuid;
 
@@ -589,9 +607,10 @@ async fn init_server(mize_folder: String) -> Result<(Uuid, Itemstore, Vec<Render
         },
     };
 
-    //create the itemstore
-    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/rocksdb").await.expect("error creating itemstore");
+    // create the itemstore
+    let itemstore = crate::server::itemstore::Itemstore::new(mize_folder.clone() + "/db").await.expect("error creating itemstore");
 
+    // load the modules and renders from <mize-folder>/mr
     let renders = load_mr(mize_folder.clone())
         .map_err(|e| MizeError::new(11))
         .extra_msg("Error loading Modules and Renders")?;

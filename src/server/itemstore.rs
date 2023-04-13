@@ -1,7 +1,7 @@
 
 use std::net::ToSocketAddrs;
 use std::{io, fmt::format, vec};
-use surrealdb::{Datastore, Key, Val};
+use surrealdb::kvs::{Datastore, Key, Val};
 use itertools::Itertools;
 use crate::error;
 use crate::error::MizeError;
@@ -17,7 +17,7 @@ use super::proto::Delta;
 // is responsible, that no illegal states can occur in the storage, by using transactions
 // currently it's just a surrealdb Datastore. should be replaced by a completely custom File-System in the future.
 pub struct Itemstore {
-    db: surrealdb::Datastore,
+    db: Datastore,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,8 +93,9 @@ impl Item {
 
 impl Itemstore {
     pub async fn new(path: String) -> Result<Itemstore, MizeError> {
-        let ds = Datastore::new(&(String::from("file://") + &path[..] + "/db")[..]).await
-            .map_err(|_| MizeError::new(30).format(vec![&path]))?;
+        println!("PATH of DB: {}", path);
+        let ds = Datastore::new(&(String::from("file://") + &path[..])[..]).await
+            .map_err(|e| MizeError::new(30).extra_msg(format!("surrealdb Error: {}", e)).extra_msg(format!("Trying to create at Location: {}", path)))?;
 
         let mut tr = ds.transaction(true, false).await?;
 

@@ -221,9 +221,9 @@ impl From<FromUtf8Error> for MizeError {
     }
 }
 
-impl From<surrealdb::Error> for MizeError {
-    fn from(sur_err: surrealdb::Error) -> MizeError {
-        MizeError::new(129)
+impl From<surrealdb::error::Db> for MizeError {
+    fn from(sur_err: surrealdb::error::Db) -> MizeError {
+        MizeError::new(129).extra_msg(format!("surrealdb Error: {}", sur_err))
     }
 }
 
