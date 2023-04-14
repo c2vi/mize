@@ -103,8 +103,6 @@ pub struct GiveItemMessage {
 pub struct CreateItemMessage {
     //pub cat: String,
     //cmd: String,
-    #[serde(flatten)]
-    id: MizeId,
     item: Item,
 }
 
