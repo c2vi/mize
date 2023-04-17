@@ -15,6 +15,8 @@ use crate::error::MizeError;
 use crate::error::ERRORS;
 use crate::server::proto::MizeMessage;
 use crate::server::proto::MizeId;
+use crate::server::proto::Update;
+use crate::server::proto::update_thread;
 use crate::error::MizeResultExtension;
 
 use serde_json::Value as JsonValue;
@@ -47,6 +49,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 //static API_PATH_STRING: &str = "$api";
 static SOCKET_CHANNEL_SIZE: usize = 200;
+static UPDATE_CHANNEL_SIZE: usize = 200;
 
 // max file sizez in the mize/data folder (in bytes)
 static MAX_INDEX_FILE_SIZE: usize = 1_800_000;
@@ -178,6 +181,7 @@ pub struct Mutexes {
     itemstore: Arc<Mutex<Itemstore>>,
     mize_folder: String,
     server_uuid: Uuid,
+    update_tx: mpsc::Sender<(Update, Peer)>,
 }
 
 impl Mutexes {
@@ -191,6 +195,7 @@ impl Mutexes {
             mize_folder: mutexes.mize_folder.clone(),
             itemstore: Arc::clone(&mutexes.itemstore),
             server_uuid: mutexes.server_uuid,
+            update_tx: mutexes.update_tx.clone(),
         }
     }
 }
@@ -217,6 +222,8 @@ pub async fn run_server(args: Vec<String>) {
 
     let (server_uuid, itemstore, renders) = init_server(mize_folder.clone()).await.extra_msg("Could not init server").handle().is_critical();
 
+    // the channel to send updates to, that are then handeled in another thread
+    let (update_tx, update_rx) = mpsc::channel::<(Update, Peer)>(UPDATE_CHANNEL_SIZE);
 
     // Collection of all the things, that most functions need
     let mutexes: Mutexes = Mutexes {
@@ -228,7 +235,14 @@ pub async fn run_server(args: Vec<String>) {
         itemstore: Arc::new(Mutex::new(itemstore)),
         mize_folder: mize_folder.clone(),
         server_uuid,
+        update_tx,
     };
+
+    // the update handling task
+    let update_mutexes = mutexes.clone();
+    tokio::spawn(async move {
+        proto::update_thread(update_rx, update_mutexes);
+    });
 
 
     //listen on the local unix socket
@@ -250,8 +264,6 @@ async fn axum_server(mize_folder: String, mutexes: Mutexes) {
     //## $api/socket/id
     //## $api/rest/
  
-
-
     let mutexes_clone = Mutexes::clone(&mutexes);
 
     let serve_client = get_service(ServeDir::new("js-client/src")).handle_error(handle_error);
@@ -341,7 +353,7 @@ async fn handle_websocket_connection(
 
     let mut msg_rx = ReceiverStream::new(msg_rx);
 
-    //my own forward
+    // my own forward
     tokio::spawn(async move {
         while let Some(msg) = msg_rx.next().await {
             match msg {
@@ -364,7 +376,8 @@ async fn handle_websocket_connection(
         }
     });
 
-    //check if mize-module header exists
+
+    // check if mize-module header exists
     let origin = if let Some(mod_header_val) = headers.get("mize-module"){
 
         let mut mods = mutexes.modules.lock().await;
@@ -410,7 +423,6 @@ async fn handle_websocket_connection(
             msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
             continue;
         };
-
         match msg {
             Message::Binary(b) => {
                 println!("Recieved a Binary Message. Those are not implemented yet.")
@@ -418,12 +430,13 @@ async fn handle_websocket_connection(
 
 
             Message::Text(text) => {
+                println!("GOT: {}", text);
                 let json_msg: proto::JsonMessage = serde_json::from_str(&text).expect("error parsing json");
-                    if let Err(err) = proto::handle_json_msg(json_msg, origin.clone(), mutexes.clone()).await {
-                        let err_msg: MizeMessage = err.handle().into();
-                        origin.send(err_msg).await;
-                    };
-                }
+                if let Err(err) = proto::handle_json_msg(json_msg, origin.clone(), mutexes.clone()).await {
+                    let err_msg: MizeMessage = err.handle().into();
+                    origin.send(err_msg).await;
+                };
+            },
 
             Message::Close(_) => {
                 match origin {

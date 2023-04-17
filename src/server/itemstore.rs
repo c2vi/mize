@@ -7,6 +7,7 @@ use crate::error;
 use crate::error::MizeError;
 use crate::server::proto;
 use crate::server::Mutexes;
+use crate::server::Peer;
 
 use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
@@ -29,7 +30,7 @@ pub struct Item {
 impl Item {
     pub fn get_id(&self) -> Result<String, MizeError> {
         if let JsonValue::Object(ob) = &self.json{
-            if let Some(id_val) = ob.get("mize-id") {
+            if let Some(id_val) = ob.get("__item__") {
                 if let JsonValue::String(id) = id_val {
                     return Ok(id.to_string())
                 } else {
@@ -119,7 +120,7 @@ impl Itemstore {
         return Ok(Itemstore {db:ds});
     }
 
-    pub async fn create(&self, mut item: Item, mutexes: Mutexes) -> Result<u64, MizeError> {
+    pub async fn create(&self, mut item: Item, mutexes: Mutexes, origin: Peer) -> Result<u64, MizeError> {
         let mut tr = self.db.transaction(true, false).await?;
 
         //get next_free_id
@@ -135,7 +136,9 @@ impl Itemstore {
         let new_num = num_of_items + 1;
 
         //add mize-id field to item
-        let delta: Delta = serde_json::from_str(&format!("[[[\"mize-id\"], \"{}\"]]", new_id))?;
+        //let delta: Delta = serde_json::from_str(&format!("[[[\"__item__\"], \"{}\"]]", new_id))?;
+        let mut delta = Delta::new();
+        delta.append(vec!["__item__"], serde_json::json!(new_id));
         item.apply_delta(delta)?;
 
         tr.set(new_id.to_be_bytes(), item.json.to_string()).await?;
@@ -143,8 +146,11 @@ impl Itemstore {
         tr.commit().await?;
 
         //handle update to item0
-        let delta_item0: Delta = serde_json::from_str(&format!("[[[\"num_of_items\"], {}], [[\"next_free_id\"], {}]]", new_num, new_next_id))?;
-        proto::handle_update(vec![(proto::MizeId::new(format!("0")), delta_item0)], mutexes.clone(), None).await?;
+        let mut delta_item0: Delta = Delta::new();
+        delta_item0.append(vec!["num_of_items"], serde_json::json!(new_num));
+        delta_item0.append(vec!["next_free_id"], serde_json::json!(new_next_id));
+
+        proto::handle_update(vec![(proto::MizeId::new(format!("0")), delta_item0)], origin, mutexes.clone()).await?;
 
         return Ok(new_id);
     }

@@ -160,12 +160,13 @@ pub struct UpdateMessage {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
+    #[serde(flatten)]
     pub delta: Vec<(Path, JsonValue)>,
 }
 
-type Path = Vec<String>;
+pub type Path = Vec<String>;
 
-type Update = Vec<(MizeId, Delta)>;
+pub type Update = Vec<(MizeId, Delta)>;
 
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
@@ -226,6 +227,17 @@ impl MizeId {
         }
     }
 
+}
+
+impl Delta {
+    pub fn new() -> Delta{
+        Delta { delta: Vec::new() }
+    }
+
+    pub fn append(&mut self, path: Vec<&str>, json: JsonValue){
+        let new_path: Vec<String> = path.into_iter().map(|e| e.to_owned()).collect();
+        self.delta.push((new_path, json));
+    }
 }
 
 
@@ -324,29 +336,29 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 
         JsonMessage::UpdateRequest(mut msg) => {
             let update: Update = vec![(msg.id, msg.delta)];
-            let new_update = handle_update(update , mutexes.clone(), Some(origin)).await?;
+            handle_update(update, origin, mutexes.clone()).await?;
 
-            let subs = mutexes.subs.lock().await;
+//            let subs = mutexes.subs.lock().await;
 
-            for (id, delta) in new_update {
+//            for (id, delta) in new_update {
                 //send that delta to every origin that is subbed the item
-                let peers = match subs.get(&id) {
-                    Some(vec) => vec,
-                    None => continue,
-                };
-                let message = UpdateMessage{id, delta};
+//                let peers = match subs.get(&id) {
+//                    Some(vec) => vec,
+//                    None => continue,
+//                };
+//                let message = UpdateMessage{id, delta};
 
-                for peer in peers {
+//                for peer in peers {
                     //TODO: send should only take a reference
-                    peer.send(message.clone()).await
-                }
-            }
+//                    peer.send(message.clone()).await
+//                }
+//            }
         },
 
 
         JsonMessage::Create(msg) => {
             let itemstore = mutexes.itemstore.lock().await;
-            let id = itemstore.create(msg.item, mutexes.clone()).await?;
+            let id = itemstore.create(msg.item, mutexes.clone(), origin.clone()).await?;
             let response = CreatedIdMessage {id: MizeId::new(format!("{}", id))};
 
             origin.send(response).await;
@@ -373,20 +385,25 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
     return Ok(())
 }
 
+pub async fn handle_update(update: Update, origin: Peer, mutexes: Mutexes) -> Result<(), MizeError> {
+    mutexes.update_tx.send((update, origin));
+    Ok(())
+}
 
-pub async fn handle_update(update: Update, mutexes: Mutexes, origin: Option<Peer>) -> Result<Update, MizeError> {
-    //TODO: run update code from modules and types
+pub async fn update_thread(mut update_rx: mpsc::Receiver<(Update, Peer)>, mutexes: Mutexes) -> Result<(), MizeError> {
+    while let Some((update, origin)) = update_rx.recv().await {
+        //TODO: run update code from modules and types
 
-    let itemstore = mutexes.itemstore.lock().await;
+        let itemstore = mutexes.itemstore.lock().await;
 
-    for (id, delta) in update.clone() {
-        if let MizeIdKind::Local(id) = id.kind()? {
-            itemstore.update(id, delta).await?;
-        } else {
-            return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
+        for (id, delta) in update {
+            if let MizeIdKind::Local(id) = id.kind()? {
+                itemstore.update(id, delta).await?;
+            } else {
+                return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
+            }
         }
     }
-
-    Ok(update)
+    Ok(())
 }
 

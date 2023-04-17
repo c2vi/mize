@@ -216,20 +216,35 @@ impl<T> MizeResultExtension<T> for Result<T, MizeError> {
 }
 
 impl From<FromUtf8Error> for MizeError {
+    #[track_caller]
     fn from(utf_err: FromUtf8Error) -> MizeError{
-        MizeError::new(109).extra_msg("std::string::FromUtf8Error while parsing something from the message")
+        let caller_location = std::panic::Location::caller();
+
+        let mut err = MizeError::new(109).extra_msg(format!("From std::string::FromUtf8Error: {}", utf_err));
+        err.code_location = Some(caller_location.into());
+        return err;
     }
 }
 
 impl From<surrealdb::error::Db> for MizeError {
+    #[track_caller]
     fn from(sur_err: surrealdb::error::Db) -> MizeError {
-        MizeError::new(129).extra_msg(format!("surrealdb Error: {}", sur_err))
+        let caller_location = std::panic::Location::caller();
+
+        let mut err = MizeError::new(129).extra_msg(format!("From surrealdb Error: {}", sur_err));
+        err.code_location = Some(caller_location.into());
+        return err;
     }
 }
 
 impl From<serde_json::Error> for MizeError {
+    #[track_caller]
     fn from(serde_err: serde_json::Error) -> MizeError {
-        MizeError::new(11).extra_msg("From an serde_json::Error. TODO: include actual error msg.")
+        let caller_location = std::panic::Location::caller();
+
+        let mut err = MizeError::new(11).extra_msg(format!("From an serde_json::Error: {}", serde_err));
+        err.code_location = Some(caller_location.into());
+        return err;
     }
 }
 
