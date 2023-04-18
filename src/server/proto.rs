@@ -32,6 +32,7 @@ use serde::{Serialize, Deserialize};
 pub enum MizeMessage {
     Json(JsonMessage),
     Bin(BinMessage),
+    Pong(),
 }
 
 
@@ -160,7 +161,6 @@ pub struct UpdateMessage {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
-    #[serde(flatten)]
     pub delta: Vec<(Path, JsonValue)>,
 }
 
@@ -386,12 +386,14 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
 }
 
 pub async fn handle_update(update: Update, origin: Peer, mutexes: Mutexes) -> Result<(), MizeError> {
-    mutexes.update_tx.send((update, origin));
+    mutexes.update_tx.send((update, origin)).await.map_err(|err| MizeError::new(11).extra_msg(format!("From SendError: {}", err)));
     Ok(())
 }
 
 pub async fn update_thread(mut update_rx: mpsc::Receiver<(Update, Peer)>, mutexes: Mutexes) -> Result<(), MizeError> {
     while let Some((update, origin)) = update_rx.recv().await {
+        println!("UPDATE: {:?}", update.iter().next().unwrap().0);
+        println!("DELTA: {:?}", update.iter().next().unwrap().1);
         //TODO: run update code from modules and types
 
         let itemstore = mutexes.itemstore.lock().await;

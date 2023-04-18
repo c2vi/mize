@@ -241,7 +241,7 @@ pub async fn run_server(args: Vec<String>) {
     // the update handling task
     let update_mutexes = mutexes.clone();
     tokio::spawn(async move {
-        proto::update_thread(update_rx, update_mutexes);
+        proto::update_thread(update_rx, update_mutexes).await.handle().extra_msg("update thread crashed").is_critical();
     });
 
 
@@ -372,6 +372,9 @@ async fn handle_websocket_connection(
                 proto::MizeMessage::Bin(bin_msg) => {
                     socket_tx.send(Message::Binary(bin_msg.raw)).await;
                 }
+                proto::MizeMessage::Pong() => {
+                    socket_tx.send(Message::Pong(Vec::new())).await;
+                }
             }
         }
     });
@@ -475,11 +478,7 @@ async fn handle_websocket_connection(
 
 
             Message::Ping(_) => {
-                let err = MizeError::new(11)
-                    .extra_msg("unhandeld WebSocket-Message type: Ping")
-                    .handle();
-
-                msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
+                msg_tx.send(MizeMessage::Pong());
             },
 
 
