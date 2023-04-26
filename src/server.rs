@@ -45,7 +45,7 @@ use axum::http::{StatusCode, Uri, Response, self};
 use axum::http::header::{HeaderName, HeaderValue, HeaderMap};
 use tower_http::services::{ServeDir, ServeFile};
 
-
+static SERVER_PORT: u16 = 9432;
 
 //static API_PATH_STRING: &str = "$api";
 static SOCKET_CHANNEL_SIZE: usize = 200;
@@ -293,7 +293,7 @@ async fn axum_server(mize_folder: String, mutexes: Mutexes) {
     }
     drop(renders);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], SERVER_PORT));
 //    tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -359,6 +359,7 @@ async fn handle_websocket_connection(
             match msg {
                 proto::MizeMessage::Json(json_msg) => {
                     if let Ok(msg) = serde_json::to_string(&json_msg) {
+                        println!("SEINDING: {}", msg);
                         socket_tx.send(Message::Text(msg)).await;
                     } else {
                         let err: MizeError = MizeError::new(11).extra_msg("error while serializing a json message").handle();

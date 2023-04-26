@@ -159,10 +159,45 @@ pub struct UpdateMessage {
     delta: Delta,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(from = "SerdeDelta")]
+#[serde(into = "SerdeDelta")]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Delta {
-    pub delta: Vec<(Path, JsonValue)>,
+    pub delta: Vec<(Path, Option<JsonValue>)>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct SerdeDelta {
+    pub delta: Vec<SerdeDeltaEntry>,
+}
+
+impl From<SerdeDelta> for Delta {
+    fn from(serde: SerdeDelta) -> Delta {
+        let mut delta = Delta {delta: Vec::new()};
+        for SerdeDeltaEntry(path, json) in serde.delta {
+            delta.delta.push((path, json));
+        }
+        return delta;
+    }
+}
+
+impl From<Delta> for SerdeDelta {
+    fn from(delta: Delta) -> SerdeDelta {
+        let mut serde = SerdeDelta {delta: Vec::new()};
+        for (path, json) in delta.delta {
+            serde.delta.push(SerdeDeltaEntry(path, json));
+        }
+        return serde;
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct SerdeDeltaEntry (
+        pub Path,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub Option<JsonValue>,
+    );
 
 pub type Path = Vec<String>;
 
@@ -181,8 +216,193 @@ pub enum MizeIdKind<'a>{
     Local(u64),
 }
 
+//mod serde_delta {
+//    pub fn serialize(delta: &super::Delta, ser: S) -> Result<S::Ok, S::Error> 
+//        where S: Serializer
+//    {
+//        let delta_seq = ser.serialize_seq(delta.len())?;
+//        for (path, value) in delta {
+//            let path_seq = ser.serialize_seq(path.len())?;
+//            for path_el in path {
+//                path_seq.serialize_element(path_el)
+//            }
+//            path_seq.end();
+//            tuple_seq = ser.serialize_seq();
+//        }
+//        delta_seq.end()
+//    }
+//    pub fn deserialize<'de>(deser: D) -> Result<super::Delta, D::Error>
+//        where D: Deserializer
+//    {
+//    }
+//}
+
 //###//===================================================
 //impls
+
+//impl Serialize for Delta {
+//    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//        where
+//            S: serde::Serializer 
+//    {
+
+//        let delta = self.delta;
+//        let id_string = match self {
+//            MizeId::Module { mod_name, id } => {String::from("#") + mod_name + id},
+//            MizeId::Upstream(id) => id.to_owned(),
+//            MizeId::Local(num) => {format!("{}", num)},
+//            MizeId::None => {"".to_owned()},
+//        };
+//        serializer.serialize_str(&id_string)
+//    }
+//}
+
+//impl<'de> Deserialize<'de> for Delta {
+//    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//    where
+//        D: Deserializer<'de>,
+//    {
+//        #[derive(Deserialize)]
+//        #[serde(field_identifier, rename_all = "lowercase")]
+//        enum Field { Delta }
+
+        // This part could also be generated independently by:
+        //
+        //    #[derive(Deserialize)]
+        //    #[serde(field_identifier, rename_all = "lowercase")]
+        //    enum Field { Secs, Nanos }
+//        impl<'de> Deserialize<'de> for Field {
+//            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
+//            where
+//                D: Deserializer<'de>,
+//            {
+//                struct FieldVisitor;
+
+//                impl<'de> Visitor<'de> for FieldVisitor {
+//                    type Value = Field;
+
+//                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//                        formatter.write_str("`secs` or `nanos`")
+//                    }
+
+//                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+//                    where
+//                        E: de::Error,
+//                    {
+//                        match value {
+//                            "secs" => Ok(Field::Secs),
+//                            "nanos" => Ok(Field::Nanos),
+//                            _ => Err(de::Error::unknown_field(value, FIELDS)),
+//                        }
+//                    }
+//                }
+
+//                deserializer.deserialize_identifier(FieldVisitor)
+//            }
+//        }
+
+//        struct DeltaVisitor;
+
+//        impl<'de> Visitor<'de> for DeltaVisitor {
+//            type Value = Delta;
+
+//            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//                formatter.write_str("struct Delta")
+//            }
+
+//            fn visit_seq<V>(self, mut seq: V) -> Result<Duration, V::Error>
+//            where
+//                V: SeqAccess<'de>,
+//            {
+//                let secs = seq.next_element()?
+//                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+//                let nanos = seq.next_element()?
+//                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+//                Ok(Duration::new(secs, nanos))
+//            }
+
+//            fn visit_map<V>(self, mut map: V) -> Result<Delta, V::Error>
+//            where
+//                V: MapAccess<'de>,
+//            {
+//                let mut delta = None;
+//                while let Some(key) = map.next_key()? {
+//                    match key {
+//                        Field::Delta => {
+//                            if secs.is_some() {
+//                                return Err(de::Error::duplicate_field("delta"));
+//                            }
+//                            secs = Some(map.next_value()?);
+                            // do deserialisation of Vec<(Path, ...)>
+//                        }
+//                    }
+//                }
+//                let delta = delta.ok_or_else(|| de::Error::missing_field("delta"))?;
+
+//                Ok(Delta::new(secs, nanos))
+//            }
+//        }
+
+//        const FIELDS: &'static [&'static str] = &["delta"];
+//        deserializer.deserialize_struct("Delta", FIELDS, DeltaVisitor)
+//    }
+//}
+
+//impl<'de> Deserialize<'de> for Delta {
+//    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//    where
+//        D: serde::Deserializer<'de>,
+//    {
+//        struct MizeIdVisitor;
+
+//        impl<'de> Visitor<'de> for Delta {
+//            type Value = Delta;
+
+//            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+//                formatter.write_str("a Delta. mize::server::proto::Delta")
+//            }
+
+//            fn visit_map<E>(self, map: &str) -> Result<Self::Value, E>
+//            where
+//                E: Error,
+//            {
+//                let first_char = match v.chars().nth(0) {
+//                    Some(ch) => ch,
+//                    None => {
+//                        return Err(de::Error::invalid_value(
+//                                de::Unexpected::Other("hi, what is this Unexpected for????"), &"The id was empty"));
+//                    },
+//                };
+
+//                if (first_char == '#'){
+//                    let iter = v.chars();
+
+                    //scip the #
+//                    let mod_name: String = iter.clone().take_while(|ch| ch != &'#' || ch != &'/').collect();
+//                    let id: String = iter.collect();
+//                    return Ok(MizeId::Module { mod_name, id});
+//                } else {
+//                    let id: u64 = match v.parse(){
+//                        Ok(num) => num,
+//                        Err(_) => {
+//                            return Err(de::Error::invalid_value(de::Unexpected::Other("hi, what is this Unexpected for????"), &"Could not parse the id to an u64"));
+//                        },
+//                    };
+//                    return Ok(MizeId::Local(id));
+//                }
+//            }
+
+//            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+//            where
+//                A: serde::de::MapAccess<'de>,
+//            {
+
+//            }
+//        }
+
+//        deserializer.deserialize_map(DeltaVisitor {})
+//    }
+//}
 
 impl MizeId {
     pub fn new(main: String) -> MizeId {
@@ -236,7 +456,7 @@ impl Delta {
 
     pub fn append(&mut self, path: Vec<&str>, json: JsonValue){
         let new_path: Vec<String> = path.into_iter().map(|e| e.to_owned()).collect();
-        self.delta.push((new_path, json));
+        self.delta.push((new_path, Some(json)));
     }
 }
 
@@ -393,18 +613,31 @@ pub async fn handle_update(update: Update, origin: Peer, mutexes: Mutexes) -> Re
 pub async fn update_thread(mut update_rx: mpsc::Receiver<(Update, Peer)>, mutexes: Mutexes) -> Result<(), MizeError> {
     while let Some((update, origin)) = update_rx.recv().await {
         println!("UPDATE: {:?}", update.iter().next().unwrap().0);
-        println!("DELTA: {:?}", update.iter().next().unwrap().1);
         //TODO: run update code from modules and types
 
         let itemstore = mutexes.itemstore.lock().await;
+        let subs = mutexes.subs.lock().await;
 
         for (id, delta) in update {
+
+            //update the items in the itemstore
             if let MizeIdKind::Local(id) = id.kind()? {
-                itemstore.update(id, delta).await?;
+                itemstore.update(id.clone(), delta.clone()).await?;
             } else {
                 return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
             }
+
+            //send a update msg to subbed clients
+            let peers = match subs.get(&id) {
+                Some(hi) => hi,
+                None => break,
+            };
+            let msg = UpdateMessage{id, delta};
+            for peer in peers {
+                peer.send(msg.clone()).await;
+            }
         }
+
     }
     Ok(())
 }

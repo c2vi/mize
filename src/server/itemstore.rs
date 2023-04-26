@@ -5,7 +5,7 @@ use surrealdb::kvs::{Datastore, Key, Val};
 use itertools::Itertools;
 use crate::error;
 use crate::error::MizeError;
-use crate::server::proto;
+use crate::server::proto::{self};
 use crate::server::Mutexes;
 use crate::server::Peer;
 
@@ -45,10 +45,12 @@ impl Item {
     }
 
     pub fn apply_delta(&mut self, delta: Delta) -> Result<(), MizeError> {
-        println!("DELTA: {:?}", delta);
+        //println!("DELTA: {:?}", delta);
         for (path, value) in delta.delta {
             let mut to_replace = &mut self.json;
+            let mut counter = path.len() as i32;
             for name in path {
+                counter -= 1;
 
 //                if let Some(inner) = to_replace.get(&name) {
 //                    to_replace = inner
@@ -62,15 +64,29 @@ impl Item {
 //                        .extra_msg("Error applying a Delta to an Item. The path could not be followed."));
 //                }
 
+
+                //on last iteration
+                if counter == 0 {
+                    if value.is_none() {
+                        if to_replace.is_object() {
+                            to_replace.as_object_mut().ok_or(MizeError::new(11))?.remove(&name);
+                            return Ok(())
+                        }
+                    }
+                }
+
                 to_replace = if to_replace.get_mut(&name).is_some() {
                     to_replace.get_mut(&name).ok_or(MizeError::new(11))?
+
                 } else if to_replace.is_object() {
+                // when path does not exist
 
                     let mut new_map = JsonValue::Object(serde_json::Map::new());
                     to_replace.as_object_mut().ok_or(MizeError::new(11))?.insert(name.clone(), new_map);
                     to_replace.get_mut(&name).ok_or(MizeError::new(11))?
 
                 } else {
+
                     return Err(MizeError::new(11)
                         .extra_msg("Error applying a Delta to an Item. The path could not be followed."));
                 };
@@ -78,7 +94,7 @@ impl Item {
             }
 
             // replace with value from the delta
-            *to_replace = value;
+            *to_replace = value.into();
         }
 
         println!("After applying a Delta, {}", self.json);
@@ -94,7 +110,7 @@ impl Item {
 
 impl Itemstore {
     pub async fn new(path: String) -> Result<Itemstore, MizeError> {
-        println!("PATH of DB: {}", path);
+        //println!("PATH of DB: {}", path);
         let ds = Datastore::new(&(String::from("file://") + &path[..])[..]).await
             .map_err(|e| MizeError::new(30).extra_msg(format!("surrealdb Error: {}", e)).extra_msg(format!("Trying to create at Location: {}", path)))?;
 
@@ -168,7 +184,7 @@ impl Itemstore {
         let mut item = Item::from_bytes(item_bytes)?;
 
         item.apply_delta(delta)?;
-        println!("after applying delta: {:?}", item);
+        //println!("after applying delta: {:?}", item);
 
         tr.set(id.to_be_bytes(), serde_json::to_string(&item)?).await?;
 
