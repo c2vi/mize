@@ -22,6 +22,7 @@ use crate::server;
 use crate::error::MizeError;
 use crate::server::itemstore::Item;
 use crate::server::proto;
+use axum::extract::ws::CloseFrame;
 
 use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
@@ -33,6 +34,7 @@ pub enum MizeMessage {
     Json(JsonMessage),
     Bin(BinMessage),
     Pong(),
+    Close((u16, String)),
 }
 
 
@@ -221,7 +223,19 @@ impl MizeId {
         MizeId { main }
     }
 
-    pub fn as_string(self) -> String {
+    pub fn from_local(local: u64) -> MizeId {
+        MizeId::new(format!("{}", local))
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.main.into_bytes()
+    }
+
+    pub fn zero() -> MizeId {
+        MizeId::new("0".to_owned())
+    }
+
+    pub fn to_string(self) -> String {
         self.main
     }
 
@@ -323,7 +337,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
                     let itemstore = mutexes.itemstore.lock().await;
                     let response = GiveItemMessage {
                         id: msg.id,
-                        item: itemstore.get(id).await?,
+                        item: itemstore.get(MizeId::from_local(id)).await?,
                     };
                     origin.send(response).await;
                 },
@@ -354,7 +368,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
                     let itemstore = mutexes.itemstore.lock().await;
                     let response = GiveItemMessage {
                         id: msg.id,
-                        item: itemstore.get(id).await?,
+                        item: itemstore.get(MizeId::from_local(id)).await?,
                     };
                     origin.send(response).await;
                 },
@@ -391,7 +405,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
         JsonMessage::Create(msg) => {
             let itemstore = mutexes.itemstore.lock().await;
             let id = itemstore.create(msg.item, mutexes.clone(), origin.clone()).await?;
-            let response = CreatedIdMessage {id: MizeId::new(format!("{}", id))};
+            let response = CreatedIdMessage {id};
 
             origin.send(response).await;
             return Ok(());
@@ -402,7 +416,7 @@ pub async fn handle_json_msg(msg: JsonMessage, origin: Peer, mutexes: Mutexes) -
             match msg.id.kind()? {
                 MizeIdKind::Local(id) => {
                     let itemstore = mutexes.itemstore.lock().await;
-                    itemstore.delete(id).await?;
+                    itemstore.delete(MizeId::from_local(id)).await?;
                     return Ok(());
                 },
                 _ => {return Err(MizeError::new(11).extra_msg("deleteng non Local items not implemented yet"));}
@@ -424,7 +438,7 @@ pub async fn handle_update(update: Update, origin: Peer, mutexes: Mutexes) -> Re
 
 pub async fn update_thread(mut update_rx: mpsc::Receiver<(Update, Peer)>, mutexes: Mutexes) -> Result<(), MizeError> {
     while let Some((update, origin)) = update_rx.recv().await {
-        println!("UPDATE: {:?}", update.iter().next().unwrap().0);
+        println!("UPDATE on id: {:?}", update.iter().next().unwrap().0.main);
         //TODO: run update code from modules and types
 
         let itemstore = mutexes.itemstore.lock().await;
@@ -434,7 +448,7 @@ pub async fn update_thread(mut update_rx: mpsc::Receiver<(Update, Peer)>, mutexe
 
             //update the items in the itemstore
             if let MizeIdKind::Local(id) = id.kind()? {
-                itemstore.update(id.clone(), delta.clone()).await?;
+                itemstore.update(MizeId::from_local(id), delta.clone()).await?;
             } else {
                 return Err(MizeError::new(11).extra_msg("updates to non local items are not handeld yet"));
             }

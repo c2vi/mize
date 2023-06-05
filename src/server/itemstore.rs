@@ -12,7 +12,7 @@ use crate::server::Peer;
 use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
 
-use super::proto::Delta;
+use super::proto::{Delta, MizeId};
 
 // The struct to do the storage and updates to it
 // is responsible, that no illegal states can occur in the storage, by using transactions
@@ -26,6 +26,16 @@ pub struct Item {
     #[serde(flatten)]
     pub json: JsonValue,
 }
+
+pub struct Array {
+}
+
+//later
+//pub struct Map {
+//}
+
+//pub struct Table {
+//}
 
 impl Item {
     pub fn get_id(&self) -> Result<String, MizeError> {
@@ -97,7 +107,7 @@ impl Item {
             *to_replace = value.into();
         }
 
-        println!("After applying a Delta, {}", self.json);
+        //println!("After applying a Delta, {}", self.json);
         return Ok(())
     }
 
@@ -116,8 +126,8 @@ impl Itemstore {
 
         let mut tr = ds.transaction(true, false).await?;
 
-        match tr.get(0u64.to_le_bytes()).await {
-            Ok(Some(val)) => println!("item 0 already created"),
+        match tr.get(MizeId::zero().into_bytes()).await {
+            Ok(Some(val)) => println!("Item 0 already created"),
             Ok(None) => {
                 let data = serde_json::json!({
                         "num_of_items": 1,
@@ -127,7 +137,7 @@ impl Itemstore {
                         "__item__": "0"
                 });
 
-                tr.set(0u64.to_be_bytes(), data.to_string()).await?;
+                tr.set(MizeId::zero().into_bytes(), data.to_string()).await?;
                 tr.commit().await?;
             },
 
@@ -136,28 +146,29 @@ impl Itemstore {
         return Ok(Itemstore {db:ds});
     }
 
-    pub async fn create(&self, mut item: Item, mutexes: Mutexes, origin: Peer) -> Result<u64, MizeError> {
+    pub async fn create(&self, mut item: Item, mutexes: Mutexes, origin: Peer) -> Result<MizeId, MizeError> {
         let mut tr = self.db.transaction(true, false).await?;
 
         //get next_free_id
-        let json: JsonValue = serde_json::from_str(&String::from_utf8(tr.get(0u64.to_be_bytes()).await?.ok_or(MizeError::new(31))?)
+        let json: JsonValue = serde_json::from_str(&String::from_utf8(tr.get(MizeId::zero().into_bytes()).await?.ok_or(MizeError::new(31))?)
             .map_err(|_| MizeError::new(11))?)
             .map_err(|_| MizeError::new(11))?;
 
-        let new_id: u64 = json.get("next_free_id").ok_or(MizeError::new(11))?.as_u64().ok_or(MizeError::new(11))?;
+        let new_id_u64: u64 = json.get("next_free_id").ok_or(MizeError::new(11))?.as_u64().ok_or(MizeError::new(11))?;
+        let new_id = MizeId::new(format!("{}", new_id_u64));
 
         let num_of_items: u64 = json.get("num_of_items").ok_or(MizeError::new(11))?.as_u64().ok_or(MizeError::new(11))?;
 
-        let new_next_id = new_id +1;
+        let new_next_id = new_id_u64 +1;
         let new_num = num_of_items + 1;
 
         //add mize-id field to item
         //let delta: Delta = serde_json::from_str(&format!("[[[\"__item__\"], \"{}\"]]", new_id))?;
         let mut delta = Delta::new();
-        delta.append(vec!["__item__"], serde_json::json!(new_id));
+        delta.append(vec!["__item__"], serde_json::json!(new_id_u64));
         item.apply_delta(delta)?;
 
-        tr.set(new_id.to_be_bytes(), item.json.to_string()).await?;
+        tr.set(new_id.clone().into_bytes(), item.json.to_string()).await?;
 
         tr.commit().await?;
 
@@ -172,12 +183,10 @@ impl Itemstore {
     }
 
 
-    pub async fn update(&self, id: u64, delta: Delta) -> Result<(), MizeError>{
-        println!("in itemstore.update");
-
+    pub async fn update(&self, id: MizeId, delta: Delta) -> Result<(), MizeError>{
         let mut tr = self.db.transaction(true, true).await?;
 
-        let item_bytes: Vec<u8> = tr.get(id.to_le_bytes()).await?
+        let item_bytes: Vec<u8> = tr.get(id.clone().into_bytes()).await?
             .ok_or(MizeError::new(11)
                 .extra_msg("The Item an update should be applied to does not exist."))?;
 
@@ -186,7 +195,7 @@ impl Itemstore {
         item.apply_delta(delta)?;
         //println!("after applying delta: {:?}", item);
 
-        tr.set(id.to_be_bytes(), serde_json::to_string(&item)?).await?;
+        tr.set(id.into_bytes(), serde_json::to_string(&item)?).await?;
 
         tr.commit().await?;
         return Ok(());
@@ -194,10 +203,10 @@ impl Itemstore {
 
 
 
-    pub async fn delete(&self, id: u64) -> Result<(), error::MizeError>{
+    pub async fn delete(&self, id: MizeId) -> Result<(), error::MizeError>{
         let mut tr = self.db.transaction(true, true).await?;
 
-        tr.del(id.to_be_bytes()).await?;
+        tr.del(id.into_bytes()).await?;
 
         tr.commit().await?;
 
@@ -205,16 +214,16 @@ impl Itemstore {
     }
 
 
-    pub async fn get(&self, id: u64) -> Result<Item, MizeError> {
+    pub async fn get(&self, id: MizeId) -> Result<Item, MizeError> {
         let mut tr = self.db.transaction(false, false).await?;
 
-        let item_res = tr.get(id.to_le_bytes()).await?;
+        let item_res = tr.get(id.clone().into_bytes()).await?;
         if let Some(item_vec) = item_res {
             let item_str: String = String::from_utf8(item_vec).map_err(|_|MizeError::new(11))?;
             let item: JsonValue = serde_json::from_str(&item_str).map_err(|_|MizeError::new(11))?;
             return Ok(Item { json: item })
         } else {
-            return Err(MizeError::new(32).format(vec![&format!("{}", id)]));
+            return Err(MizeError::new(32).format(vec![&format!("{:?}", id)]));
         }
         return Err(MizeError::new(11));
     }

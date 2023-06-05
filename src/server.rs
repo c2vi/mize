@@ -23,6 +23,7 @@ use serde_json::Value as JsonValue;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use std::str::FromStr;
+use std::borrow::Cow;
 
 use tokio::sync::mpsc::{Sender, channel, Receiver};
 use tokio_stream::wrappers::ReceiverStream;
@@ -39,7 +40,7 @@ use axum::Router;
 use axum::routing::{get, get_service};
 use std::net::SocketAddr;
 use axum::response::{IntoResponse, Html};
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade, CloseFrame};
 use axum::extract::{State, self};
 use axum::http::{StatusCode, Uri, Response, self};
 use axum::http::header::{HeaderName, HeaderValue, HeaderMap};
@@ -353,34 +354,6 @@ async fn handle_websocket_connection(
 
     let mut msg_rx = ReceiverStream::new(msg_rx);
 
-    // my own forward
-    tokio::spawn(async move {
-        while let Some(msg) = msg_rx.next().await {
-            match msg {
-                proto::MizeMessage::Json(json_msg) => {
-                    if let Ok(msg) = serde_json::to_string(&json_msg) {
-                        println!("SEINDING: {}", msg);
-                        socket_tx.send(Message::Text(msg)).await;
-                    } else {
-                        let err: MizeError = MizeError::new(11).extra_msg("error while serializing a json message").handle();
-                        if let Ok(text) = serde_json::to_string(&err.to_json()){
-                            socket_tx.send(Message::Text(text));
-                        } else {
-                            MizeError::new(11).extra_msg("not even being able to serialize an error, while failing to serializing a message").handle();
-                        }
-                    }
-                }
-                proto::MizeMessage::Bin(bin_msg) => {
-                    socket_tx.send(Message::Binary(bin_msg.raw)).await;
-                }
-                proto::MizeMessage::Pong() => {
-                    socket_tx.send(Message::Pong(Vec::new())).await;
-                }
-            }
-        }
-    });
-
-
     // check if mize-module header exists
     let origin = if let Some(mod_header_val) = headers.get("mize-module"){
 
@@ -420,12 +393,50 @@ async fn handle_websocket_connection(
         Peer::Client(client)
     };
 
+    // Forwarding messages
+    let myorigin = origin.clone();
+    let mymutexes = mutexes.clone();
+    tokio::spawn(async move {
+        while let Some(msg) = msg_rx.next().await {
+            match msg {
+                proto::MizeMessage::Json(json_msg) => {
+                    if let Ok(msg) = serde_json::to_string(&json_msg) {
+                        let result = socket_tx.send(Message::Text(msg.clone())).await;
+                        if let Err(e) = result {
+                            println!("Client no longer Connected: {:?}", e);
+                            remove_peer(myorigin.clone(), mymutexes.clone()).await;
+                        } else {
+                            println!("SENDING: {}", msg);
+                        }
+                    } else {
+                        let err: MizeError = MizeError::new(11).extra_msg("error while serializing a json message").handle();
+                        if let Ok(text) = serde_json::to_string(&err.to_json()){
+                            socket_tx.send(Message::Text(text));
+                        } else {
+                            MizeError::new(11).extra_msg("not even being able to serialize an error, while failing to serializing a message").handle();
+                        }
+                    }
+                }
+                proto::MizeMessage::Bin(bin_msg) => {
+                    socket_tx.send(Message::Binary(bin_msg.raw)).await;
+                }
+                proto::MizeMessage::Pong() => {
+                    socket_tx.send(Message::Pong(Vec::new())).await;
+                }
+                proto::MizeMessage::Close((num, reason)) => {
+                    println!("SENDING Close message");
+                    socket_tx.send(Message::Close(Some(CloseFrame{code: num, reason: Cow::Owned(reason)}))).await;
+                }
+            }
+        }
+    });
+
     // Reading messages
     while let Some(result) = socket_rx.next().await {
         let msg = if let Ok(msg) = result {msg} else {
-            let err = MizeError::new(115).handle();
-            msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
-            continue;
+            let err = MizeError::new(115).extra_msg("TCP Connection Closed");
+            remove_peer(origin.clone(), mutexes.clone());
+            return;
         };
         match msg {
             Message::Binary(b) => {
@@ -442,39 +453,18 @@ async fn handle_websocket_connection(
                 };
             },
 
-            Message::Close(_) => {
-                match origin {
-                    Peer::Client(ref client) => {
-                        //remove client from client list
-                        let mut clients = mutexes.clients.lock().await;
-                        let index = match clients.iter()
-                            .position(|client_iter| client_iter.id == client.id)
-                            .ok_or(MizeError::new(11).extra_msg("A Client disconected, that had never connected......")){
-                                Ok(index) => index,
-                                Err(err) => {
-                                    let msg: MizeMessage = err.into();
-                                    origin.send(msg);
-                                    return;
-                                },
-                            };
-                        clients.remove(index);
-                        println!("Close from Client");
-                        return;
+            Message::Close(inner) => {
+                match inner {
+                    Some(CloseFrame{code, reason}) => {
+                        origin.send(MizeMessage::Close((code, reason.into_owned()))).await;
                     },
-                    Peer::Module(module) => {
-                        //remove module from module list
-                        let mut modules = mutexes.modules.lock().await;
-                        let index = modules.iter()
-                            .position(|module_iter| module_iter.client_id == module.client_id)
-                            .expect("A Module disconected, that had never connected.....");
-                        modules.remove(index);
-                        println!("Close from Module");
-                        return;
+                    None => {
+                        origin.send(MizeMessage::Close((1000, "You didn't send a Close Reason".to_owned()))).await;
                     }
-                    Peer::Upstream(_) => {
-                        return;
-                    }
-                }
+                };
+
+                println!("Close from Client");
+                remove_peer(origin.clone(), mutexes.clone()).await;
             }
 
 
@@ -487,7 +477,6 @@ async fn handle_websocket_connection(
                 let err = MizeError::new(11)
                     .extra_msg("unhandeld WebSocket-Message type: Pong")
                     .handle();
-
                 msg_tx.send(proto::MizeMessage::Json(err.to_json_message())).await;
             },
 
@@ -631,5 +620,37 @@ async fn init_server(mize_folder: String) -> Result<(Uuid, Itemstore, Vec<Render
     return Ok((server_uuid, itemstore, renders));
 }
 
-
+pub async fn remove_peer(origin: Peer, mutexes: Mutexes) {
+    match origin {
+        Peer::Client(ref client) => {
+            //remove client from client list
+            let mut clients = mutexes.clients.lock().await;
+            let index = match clients.iter()
+                .position(|client_iter| client_iter.id == client.id)
+                .ok_or(MizeError::new(11).extra_msg("A Client disconected, that had never connected......")){
+                    Ok(index) => index,
+                    Err(err) => {
+                        let msg: MizeMessage = err.into();
+                        origin.send(msg);
+                        return;
+                    },
+                };
+            clients.remove(index);
+            return;
+        },
+        Peer::Module(module) => {
+            //remove module from module list
+            let mut modules = mutexes.modules.lock().await;
+            let index = modules.iter()
+                .position(|module_iter| module_iter.client_id == module.client_id)
+                .expect("A Module disconected, that had never connected.....");
+            modules.remove(index);
+            println!("Close from Module");
+            return;
+        }
+        Peer::Upstream(_) => {
+            return;
+        }
+    }
+}
 
