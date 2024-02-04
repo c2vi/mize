@@ -1,0 +1,7 @@
+{
+	"name": "instance",
+	"paths": [
+	[["daemon", "pid"], "int"],
+	[["daemon", "log", "blob"]]
+	]
+}
