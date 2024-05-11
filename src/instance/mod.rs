@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::fs::create_dir;
 use colored::Colorize;
 use log::{trace, debug, info, warn, error};
+use serde_json::json;
 use tokio::net::{UnixListener, UnixStream};
 use uuid::Uuid;
 use std::fs::File;
@@ -12,7 +13,7 @@ use nix::unistd::Pid;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
 use crate::itemstore::{Itemstore, self};
-use crate::item::{Item, MizeId, ItemGeneral};
+use crate::item::{Item, MizeId, ItemRef};
 
 pub mod peer;
 pub mod connection;
@@ -25,6 +26,7 @@ static TCP_SOCKET_CHANNEL_SIZE: usize = 200;
 static UPDATE_CHANNEL_SIZE: usize = 200;
 
 
+/// The Instance type is the heart of the mize system
 pub struct Instance {
     store: Itemstore,
     peers: Vec<Connection>,
@@ -71,41 +73,18 @@ impl Instance {
         };
 
         if !instance.store.has_item(MizeId::main(1)).await? {
-            // create first item ... which is this instance
-            let mut instance_item = ItemGeneral {
-                id: MizeId::main(1),
-                kind: vec!["instance".to_owned()],
-                value: Vec::new(),
-                map: HashMap::new(),
-            };
-            instance_item.map.insert("daemon".to_owned(), MizeId::main(1).join("daemon"));
-            instance.store.set_item(Item::General(instance_item)).await?;
-
-            let mut daemon_item = ItemGeneral {
-                id: MizeId::main(1).join("daemon"),
-                kind: vec!["instance/daemon".to_owned()],
-                value: Vec::new(),
-                map: HashMap::new(),
-            };
-            daemon_item.map.insert("log".to_owned(), MizeId::main(1).join("daemon").join("log"));
-            daemon_item.map.insert("pid".to_owned(), MizeId::main(1).join("daemon").join("pid"));
-            instance.store.set_item(Item::General(daemon_item)).await?;
-
-            let log_item = ItemGeneral {
-                id: MizeId::main(1).join("daemon").join("log"),
-                kind: vec!["blob".to_owned()],
-                value: Vec::new(),
-                map: HashMap::new(),
-            };
-            instance.store.set_item(Item::General(log_item)).await?;
-
-            let pid_item = ItemGeneral {
-                id: MizeId::main(1).join("daemon").join("pid"),
-                kind: vec!["int".to_owned()],
-                value: Vec::new(),
-                map: HashMap::new(),
-            };
-            instance.store.set_item(Item::General(pid_item)).await?;
+            instance.store.create_item_from_json(json!({
+                "item": {
+                    "kind": "instance",
+                },
+                "daemon": {
+                    "log": "",
+                    "pid": "",
+                    "item": {
+                        "kind": "instance/daemon",
+                    },
+                },
+            }));
         };
 
         return Ok(instance);

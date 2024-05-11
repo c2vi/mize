@@ -4,8 +4,9 @@ use std::path::{PathBuf, Path};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use colored::Colorize;
+use std::rc::Rc;
 
-use crate::item::{Item, MizeId, ItemCbor, ItemDescriptor};
+use crate::item::{Item, MizeId, ItemCbor, ItemRef};
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 
 pub enum Itemstore {
@@ -146,7 +147,7 @@ impl FolderItemstore {
             final_path.push(id_string[..2].to_owned());
         };
 
-        return Ok(Item::Descriptor(ItemDescriptor { path: final_path, id}));
+        return Ok(Item::Descriptor(ItemRef { path: final_path, id}));
     }
 
     async fn set_item(&self, item: Item) -> MizeResult<()> {

@@ -16,7 +16,24 @@ use std::env;
 
 use log::{trace, debug, info, warn, error};
 
-mod cli;
+mod cli {
+    pub mod daemon;
+    pub mod serve;
+    pub mod get;
+    pub mod set;
+    pub mod mount;
+    pub mod print;
+    pub mod call;
+
+    pub use daemon::daemon;
+    pub use serve::serve;
+    pub use get::get;
+    pub use set::set;
+    pub use mount::mount;
+    pub use print::print;
+    pub use call::call;
+}
+
 mod error;
 // mod types;
 mod instance;
@@ -24,11 +41,17 @@ mod item;
 mod itemstore;
 mod proto;
 
+#[cfg(test)]
+mod test;
+
 static APPNAME: &str = "mize";
 static DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Warn;
 
 #[tokio::main]
 async fn main() {
+    // welcome to the mize source code
+    // this is the main entry point for platforms with an os (eg: Linux, MacOS, Windows, BSD, ...)
+    // Also let's try to make the most best documented code ever. (eventually) so it's fun to work on
 
     let cli_matches = cli_matches();
 
@@ -55,8 +78,8 @@ async fn main() {
         // mi set
         Some(("set", sub_matches)) => cli::set(sub_matches).await,
 
-        // mi print
-        Some(("print", sub_matches)) => cli::print(sub_matches).await,
+        // mi sub
+        Some(("sub", sub_matches)) => cli::sub(sub_matches).await,
 
         // mi call
         Some(("call", sub_matches)) => cli::call(sub_matches).await,
@@ -307,10 +330,10 @@ fn cli_matches() -> clap::ArgMatches {
                 .arg(Arg::new("id").help("The id or path to set"))
             )
         .subcommand(
-                Command::new("print")
-                .aliases(["p"])
+                Command::new("sub")
+                .aliases(["su"])
                 .arg(&store_arg)
-                .arg(Arg::new("id").help("The id or path to print"))
+                .arg(Arg::new("id").help("The id or path to sub to and show"))
             )
         .subcommand(
                 Command::new("call")

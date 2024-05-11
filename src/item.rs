@@ -3,8 +3,10 @@ use std::{collections::HashMap, path::PathBuf, io::Cursor, fmt::Display};
 use serde_cbor::Value as CborValue;
 use std::fs::File;
 use tokio::sync::Mutex;
+use std::rc::Rc;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
+use crate::itemstore::Itemstore;
 
 
 #[derive(Debug)]
@@ -178,7 +180,7 @@ impl ItemRef {
         todo!()
     }
 
-    fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
+    async fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
         let store = self.store.lock().await;
         for (key, value) in self.map.iter() {
             // TODO right here!!!!
