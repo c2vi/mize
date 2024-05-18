@@ -1,18 +1,12 @@
-
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::format;
 use std::string::FromUtf8Error;
-use toml::Value;
-use colored::Colorize;
 use std::io;
+use colored::Colorize;
 use log::{trace, debug, info, warn, error};
 
-use serde_json::Value as JsonValue;
-use toml;
-
-use crate::instance::Connection;
 use crate::proto::MizeMessage;
 
 pub type MizeResult<T> = Result<T, MizeError>;

@@ -21,34 +21,23 @@ mod cli {
     pub mod serve;
     pub mod get;
     pub mod set;
+    pub mod show;
     pub mod mount;
-    pub mod print;
     pub mod call;
 
     pub use daemon::daemon;
     pub use serve::serve;
     pub use get::get;
     pub use set::set;
+    pub use show::show;
     pub use mount::mount;
-    pub use print::print;
     pub use call::call;
 }
-
-mod error;
-// mod types;
-mod instance;
-mod item;
-mod itemstore;
-mod proto;
-
-#[cfg(test)]
-mod test;
 
 static APPNAME: &str = "mize";
 static DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Warn;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // welcome to the mize source code
     // this is the main entry point for platforms with an os (eg: Linux, MacOS, Windows, BSD, ...)
     // Also let's try to make the most best documented code ever. (eventually) so it's fun to work on
@@ -64,25 +53,25 @@ async fn main() {
     // match command
     match cli_matches.subcommand() {
         // mi daemon
-        Some(("daemon", sub_matches)) => cli::daemon(sub_matches).await,
+        Some(("daemon", sub_matches)) => cli::daemon(sub_matches),
 
         // mi serve
-        Some(("serve", sub_matches)) => cli::serve(sub_matches).await,
+        Some(("serve", sub_matches)) => cli::serve(sub_matches),
 
         // mi mount
-        Some(("mount", sub_matches)) => cli::mount(sub_matches).await,
+        Some(("mount", sub_matches)) => cli::mount(sub_matches),
 
         // mi get
-        Some(("get", sub_matches)) => cli::get(sub_matches).await,
+        Some(("get", sub_matches)) => cli::get(sub_matches),
 
         // mi set
-        Some(("set", sub_matches)) => cli::set(sub_matches).await,
+        Some(("set", sub_matches)) => cli::set(sub_matches),
 
-        // mi sub
-        Some(("sub", sub_matches)) => cli::sub(sub_matches).await,
+        // mi show
+        Some(("show", sub_matches)) => cli::show(sub_matches),
 
         // mi call
-        Some(("call", sub_matches)) => cli::call(sub_matches).await,
+        Some(("call", sub_matches)) => cli::call(sub_matches),
 
         // some unknown command passed
         Some((cmd, sub_matches)) => error!("The subcommand: {} is not known. use --help to list availavle commands", cmd),
@@ -330,8 +319,8 @@ fn cli_matches() -> clap::ArgMatches {
                 .arg(Arg::new("id").help("The id or path to set"))
             )
         .subcommand(
-                Command::new("sub")
-                .aliases(["su"])
+                Command::new("show")
+                .aliases(["so"])
                 .arg(&store_arg)
                 .arg(Arg::new("id").help("The id or path to sub to and show"))
             )

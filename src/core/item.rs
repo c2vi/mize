@@ -1,14 +1,39 @@
 use log::{trace, debug, info, warn, error};
 use std::{collections::HashMap, path::PathBuf, io::Cursor, fmt::Display};
-use serde_cbor::Value as CborValue;
 use std::fs::File;
 use tokio::sync::Mutex;
 use std::rc::Rc;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
-use crate::itemstore::Itemstore;
+use crate::instance::Instance;
+use crate::instance::store::Store;
+use crate::id::MizeId;
+use cbor::Cbor as CborValue;
 
 
+// a item always has to do with a Instance, which takes care of how it is updated
+pub struct Item<S: Store + Sized> {
+    pub id: MizeId,
+    pub instance: Instance<S>
+}
+
+// without an Instance it is not an item, but only the "data of an item"
+// and this type for now is just an alias to CborValue
+pub type ItemData = CborValue;
+
+impl<S: Store> Item<S> {
+    pub fn id(self) -> MizeId {
+        self.id
+    }
+
+    pub fn value_raw(self) -> MizeResult<Vec<u8>> {
+        // this will call from the instance which gets the value from the store
+        Ok(Vec::new())
+    }
+}
+
+
+/*
 #[derive(Debug)]
 pub enum Item {
     Cbor(ItemCbor),
@@ -233,4 +258,5 @@ impl Item {
         todo!()
     }
 }
+*/
 

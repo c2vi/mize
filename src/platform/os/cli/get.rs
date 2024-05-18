@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use home::home_dir;
 
-use crate::error::{MizeResultTrait, IntoMizeResult, MizeError};
-use crate::instance::Instance;
+use mize::error::{MizeResultTrait, IntoMizeResult, MizeError};
+use mize::instance::Instance;
 
 
 
-pub async fn get(sub_matches: &ArgMatches) {
+pub fn get(sub_matches: &ArgMatches) {
     let instance_folder_path = match sub_matches.get_one::<String>("store") {
         Some(a) => PathBuf::from(a),
         None => {
@@ -18,6 +18,7 @@ pub async fn get(sub_matches: &ArgMatches) {
             home_dir
         },
     };
-    let instance = Instance::new(instance_folder_path);
+    println!("unfinished");
+    //let instance = Instance::new(instance_folder_path);
 }
 

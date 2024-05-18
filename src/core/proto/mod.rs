@@ -1,5 +1,4 @@
-use serde_cbor::Value as CborValue;
-
+use cbor::Cbor as CborValue;
 
 #[derive(Debug, Clone)]
 pub struct MizeMessage {

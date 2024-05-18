@@ -1,16 +1,3 @@
-use log::{trace, debug, info, warn, error};
-use tokio::{sync::mpsc::{Sender, Receiver}, net::UnixStream};
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::io::{self, Interest};
-
-use crate::proto::MizeMessage;
-use crate::error::{MizeError, MizeResult, IntoMizeResult};
-
-#[derive(Debug)]
-pub struct Connection {
-    tx: Sender<MizeMessage>,
-    rx: Receiver<MizeMessage>,
-}
 
 impl Connection {
     pub fn from_unix(unix_sock: UnixStream) -> Connection {
