@@ -2,18 +2,23 @@
 name = "mize"
 version = "0.1.1"
 edition = "2021"
+license = "GPL-3.0"
+description = 'A strongly typed "filesystem" for the age of connectivity.'
+repository = "https://github.com/c2vi/mize"
 
 [lib]
 name = "mize"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "mize"
 path = "src/platform/os/main.rs"
-required-features = [ "os-binary" ]
+required-features = [ "os-target" ]
 
 [features]
-os-binary = [ "clap", "home", "env_logger", "daemonize", "nix" ]
+os-target = [ "clap", "home", "env_logger", "daemonize", "nix" ]
+wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 
 
 [dependencies]
@@ -24,12 +29,21 @@ log = "0.4.20"
 tokio = { version = "1.21.0", features = ["sync"] }
 cbor = "0.4.1"
 
+# wasm dependencies
+wasm-bindgen = { version = "0.2.84", optional = true }
+console_error_panic_hook = { version = "0.1.7", optional = true }
+wasm-bindgen-cli = { version = "0.2.92", optional = true }
+
+# os dependencies
 clap = { version = "4.4.11", features = ["cargo"], optional = true }
 home = { version = "0.5.9", optional = true }
 env_logger = { version = "0.10.1", optional = true }
 daemonize = { version = "0.5.0", optional = true }
 nix = { version = "0.27.1", features = ["signal"], optional = true }
 
+# bare dependencies
+
+# unused dependencies
 axum = { version = "0.6.1", features = ["ws", "headers"], optional = true }
 axum-extra = { version = "0.4.2", features = ["spa"], optional = true }
 axum-macros = { version = "0.3.0", optional = true }
@@ -45,3 +59,9 @@ axum-macros = { version = "0.3.0", optional = true }
 #tower-http = "0.3.5"
 
 
+[dev-dependencies]
+wasm-bindgen-test = { version = "0.3.34" }
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
