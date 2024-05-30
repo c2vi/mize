@@ -1,4 +1,4 @@
-use cbor::Cbor as CborValue;
+use ciborium::Value as CborValue;
 
 #[derive(Debug, Clone)]
 pub struct MizeMessage {

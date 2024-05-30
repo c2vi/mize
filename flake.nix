@@ -89,6 +89,9 @@ in {
         */
         (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
       ];
+      shellHook = ''
+        export MIZE_CONFIG_FILE=${self}/default-config.toml
+      '';
     };
 
   }) // {

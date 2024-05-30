@@ -8,10 +8,11 @@ use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::instance::Instance;
 use crate::instance::store::Store;
 use crate::id::MizeId;
-use cbor::Cbor as CborValue;
+use ciborium::Value as CborValue;
 
 
 // a item always has to do with a Instance, which takes care of how it is updated
+#[derive(Debug)]
 pub struct Item<S: Store + Sized> {
     pub id: MizeId,
     pub instance: Instance<S>
@@ -22,15 +23,30 @@ pub struct Item<S: Store + Sized> {
 pub type ItemData = CborValue;
 
 impl<S: Store> Item<S> {
-    pub fn id(self) -> MizeId {
-        self.id
+    pub fn id(&self) -> &MizeId {
+        &self.id
     }
 
-    pub fn value_raw(self) -> MizeResult<Vec<u8>> {
+    pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
         // this will call from the instance which gets the value from the store
-        Ok(Vec::new())
+        self.instance.store.get_value_raw(&self.id())
     }
 }
+
+impl<S: Store> Display for Item<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.value_raw() {
+            Ok(value) => match String::from_utf8(value) {
+                Ok(string) => write!(f, "{}", string),
+                Err(_) => write!(f, "{:?}", self.value_raw()),
+            }
+            Err(err) => {err.log(); Ok(())},
+        };
+        return Ok(());
+    }
+}
+
+
 
 
 /*

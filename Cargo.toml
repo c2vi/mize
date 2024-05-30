@@ -17,7 +17,7 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
-os-target = [ "clap", "home", "env_logger", "daemonize", "nix" ]
+os-target = [ "clap", "home", "env_logger", "daemonize", "nix", "toml" ]
 wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 
 
@@ -27,7 +27,8 @@ colored = "2.0.0"
 uuid = "1.3.0"
 log = "0.4.20"
 tokio = { version = "1.21.0", features = ["sync"] }
-cbor = "0.4.1"
+ciborium = { version = "0.2.2", default-features = false }
+serde = "1.0.203"
 
 # wasm dependencies
 wasm-bindgen = { version = "0.2.84", optional = true }
@@ -40,6 +41,7 @@ home = { version = "0.5.9", optional = true }
 env_logger = { version = "0.10.1", optional = true }
 daemonize = { version = "0.5.0", optional = true }
 nix = { version = "0.27.1", features = ["signal"], optional = true }
+toml = { version = "0.8.13", features = ["parse"], optional = true }
 
 # bare dependencies
 

@@ -103,7 +103,13 @@ impl MizeError {
     }
 
     pub fn log(self) -> MizeError {
-        error!("MizeError encountered: {}", self.messages.join("\n"));
+        error!("MizeError envountered!");
+        if let Some(ref location) = self.code_location {
+            error!("[ {} ] {}", "LOCATION".yellow(), location);
+        };
+        for msg in &self.messages {
+            error!("[ {} ] {}", "MSG".yellow(), msg);
+        }
         self
     }
 
@@ -209,7 +215,9 @@ impl<T, E, S> IntoMizeResult<T, S> for Result<T, E> where E: std::fmt::Display {
 
         match self {
             Ok(val) => MizeResult::Ok(val),
-            Err(err) => MizeResult::Err(MizeError::new().category("misc").msg(format!("From any Error: {}", err))),
+            Err(err) => MizeResult::Err(MizeError::new()
+                .category("misc")
+                .msg(format!("From {}: {}", std::any::type_name_of_val(&err), err))),
         }
     }
     #[track_caller]
@@ -217,7 +225,10 @@ impl<T, E, S> IntoMizeResult<T, S> for Result<T, E> where E: std::fmt::Display {
         let caller_location = std::panic::Location::caller();
         match self {
             Ok(val) => MizeResult::Ok(val),
-            Err(err) => MizeResult::Err(MizeError::new().category("misc").msg(format!("{}", msg)).msg(format!("From any Error: {}", err))),
+            Err(err) => MizeResult::Err(MizeError::new()
+                .category("misc")
+                .msg(format!("{}", msg))
+                .msg(format!("From {}: {}", std::any::type_name_of_val(&err), err))),
         }
     }
 }

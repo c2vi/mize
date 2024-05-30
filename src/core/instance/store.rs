@@ -9,7 +9,7 @@ pub trait Store {
     // is implemented, so that there can be a multithreaded implementation
     //fn get(self, id: MizeId) -> MizeResult<Item<Self>> where Self: Sized;
 
-    fn set<T: Into<ItemData>>(self, id: MizeId, data: T) -> MizeResult<()>;
+    fn set<T: Into<ItemData>>(self, id: &MizeId, data: T) -> MizeResult<()>;
 
     // in the future should implement transactions, ....
 
@@ -19,6 +19,8 @@ pub trait Store {
     fn get_backlinks(self, item: Item<Self>) -> MizeResult<Vec<MizeId>> where Self: Sized;
 
     fn new_id(&self) -> MizeResult<MizeId>;
+
+    fn get_value_raw(&self, id: &MizeId) -> MizeResult<Vec<u8>>;
 }
 
 /// references an item that is stored in a store

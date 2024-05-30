@@ -1,5 +1,7 @@
+use core::fmt;
 use std::collections::HashMap;
 use std::fs::create_dir;
+use std::sync::{Arc, Mutex};
 use log::{trace, debug, info, warn, error};
 use uuid::Uuid;
 use std::fs::File;
@@ -21,14 +23,16 @@ pub mod subscription;
 static MSG_CHANNEL_SIZE: usize = 200;
 
 /// The Instance type is the heart of the mize system
+#[derive(Clone)]
 pub struct Instance<S: Store> {
     // question vec of stores???
     // would mean replication logic and such things is handeled by the instance
     // i think it would be better thogh to then implement a ReplicatedStore
-    store: S,
-    peers: Vec<Box<dyn Connection>>,
-    subs: HashMap<MizeId, Subscription>
+    pub store: S,
+    peers: Arc<Mutex<Vec<Box<dyn Connection>>>>,
+    subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
 }
+
 
 /*
 pub enum RealmId {
@@ -38,21 +42,27 @@ pub enum RealmId {
 }
 */
 
-
-impl<S: Store> Instance<S> {
-    // new() opens a
-    pub async fn new() -> MizeResult<Instance<MemStore>> {
+impl Instance<MemStore> {
+    pub fn new() -> MizeResult<Instance<MemStore>> {
         trace!("[ {} ] Instance::new()", "CALL".yellow());
 
         let memstore = MemStore::new();
-        let instance = Instance {store: memstore, peers: Vec::new(), subs: HashMap::new()};
+        let instance = Instance {store: memstore, peers: Arc::new(Mutex::new(Vec::new())), subs: Arc::new(Mutex::new(HashMap::new())) };
+
 
         // platform specific init code
-        // TODO
+        if cfg!(feature = "os-target") { // on os platforms
+            crate::platform::os::os_instance_init(instance.clone())?
+        }
+
+        // end of platform specific init code
+
 
         return Ok(instance);
     }
+}
 
+impl<S: Store> Instance<S> {
     pub fn new_item(self) -> MizeResult<Item<S>> {
         let id = self.store.new_id()?;
         return Ok(Item {id, instance: self});
@@ -63,9 +73,14 @@ impl<S: Store> Instance<S> {
     }
 
     pub fn set<I: Into<MizeId>, V: Into<ItemData>>(self, id: I, value: V) -> MizeResult<()> {
-        self.store.set(id.into(), value)
+        self.store.set(&id.into(), value)
     }
 
 }
 
+impl<S: Store> fmt::Debug for Instance<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Mize Instance with subs: {:?}", self.subs,)
+    }
+}
 

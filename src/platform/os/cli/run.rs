@@ -6,12 +6,13 @@ use std::fs::File;
 use log::{trace, debug, info, warn, error};
 use nix::sys::signal::{self, Signal};
 
-use mize::error::{MizeResultTrait, IntoMizeResult, MizeError};
+use mize::error::{MizeResultTrait, IntoMizeResult, MizeError, MizeResult};
 use mize::instance::Instance;
 
 
-pub fn daemon(sub_matches: &ArgMatches) {
-    println!("not implemented");
+pub fn run(sub_matches: &ArgMatches) -> MizeResult<()> {
+
+    let instance = Instance::new();
     /*
     let instance_path = match sub_matches.get_one::<String>("store") {
         Some(a) => PathBuf::from(a),
@@ -63,4 +64,5 @@ pub fn daemon(sub_matches: &ArgMatches) {
         },
     }
     */
+    return Ok(());
 }

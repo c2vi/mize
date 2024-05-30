@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::{ArgAction, ArgMatches};
 use clap::{Arg, crate_version, Command};
 
+use mize::error::MizeError;
 use tokio::sync::{Mutex, mpsc};
 use std::sync::Arc;
 use log::Level;
@@ -17,16 +18,16 @@ use std::env;
 use log::{trace, debug, info, warn, error};
 
 mod cli {
-    pub mod daemon;
-    pub mod serve;
+    pub mod run;
+    pub mod stop;
     pub mod get;
     pub mod set;
     pub mod show;
     pub mod mount;
     pub mod call;
 
-    pub use daemon::daemon;
-    pub use serve::serve;
+    pub use run::run;
+    pub use stop::stop;
     pub use get::get;
     pub use set::set;
     pub use show::show;
@@ -51,12 +52,12 @@ fn main() {
 
 
     // match command
-    match cli_matches.subcommand() {
+    let result = match cli_matches.subcommand() {
         // mi daemon
-        Some(("daemon", sub_matches)) => cli::daemon(sub_matches),
+        Some(("daemon", sub_matches)) => cli::run(sub_matches),
 
         // mi serve
-        Some(("serve", sub_matches)) => cli::serve(sub_matches),
+        Some(("serve", sub_matches)) => cli::stop(sub_matches),
 
         // mi mount
         Some(("mount", sub_matches)) => cli::mount(sub_matches),
@@ -74,12 +75,14 @@ fn main() {
         Some(("call", sub_matches)) => cli::call(sub_matches),
 
         // some unknown command passed
-        Some((cmd, sub_matches)) => error!("The subcommand: {} is not known. use --help to list availavle commands", cmd),
+        Some((cmd, sub_matches)) => Err(MizeError::new().msg(format!("The subcommand: {} is not known. use --help to list availavle commands", cmd))),
 
-        None => error!("No subcommand was passed. use --help to list availavle comamnds."),
+        None => Err(MizeError::new().msg("No subcommand was passed. use --help to list availavle comamnds.")),
+    };
+
+    if let Err(err) = result {
+        err.log();
     }
-
-
 }
 
 fn init_logger(cli_matches: &ArgMatches) {
@@ -282,24 +285,12 @@ fn cli_matches() -> clap::ArgMatches {
             .help("set the log-level to OFF")
         )
         .subcommand(
-                Command::new("daemon")
-                .aliases(["da"])
-                .arg(&store_arg)
-                .about("Starts the mize daemon. Has subcommands to stop, etc")
-                .subcommand(Command::new("stop")
-                        .about("Stops the mize daemon if one is running")
-                    )
-                .subcommand(Command::new("kill"))
-                        .about("Stops the mize daemon with a signal")
-                        .alias("k")
-                .subcommand(Command::new("status")
-                        .alias("st")
-                    )
+                Command::new("run")
+                .aliases(["r"])
+                .about("Run a MiZe Instance")
             )
-        .subcommand(
-                Command::new("serve")
-                .aliases(["se"])
-                .arg(&store_arg)
+        .subcommand(Command::new("stop")
+                .about("Stop a MiZe Instance")
             )
         .subcommand(
                 Command::new("mount")
