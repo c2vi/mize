@@ -8,10 +8,10 @@ use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
 
 
-pub fn os_instance_init<S: Store>(instance: Instance<S>) -> MizeResult<()> {
+pub fn os_instance_init<S: Store>(instance: &mut Instance<S>) -> MizeResult<()> {
     // this is the code, that runs to initialize an Instance on a system with an os present.
 
-    // load MIZE_CONFIG_FILE as the instance, which is item 0
+    ////// load MIZE_CONFIG_FILE as the instance, which is item 0
     let config_file_path = std::env::var("MIZE_CONFIG_FILE")
         .mize_result_msg("Could not get the MIZE_CONFIG_FILE Environment Variable")?;
 
@@ -24,6 +24,9 @@ pub fn os_instance_init<S: Store>(instance: Instance<S>) -> MizeResult<()> {
         .mize_result_msg(format!("Could not deserialize the content of MIZE_CONFIG_FILE at {}", &config_file_path))?;
 
     instance.set("0", config)?;
+
+    ////// load config from MIZE_CONFIG env var
+    //TODO
     
     return Ok(());
 }

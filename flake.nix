@@ -90,14 +90,14 @@ in {
         (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
       ];
       shellHook = ''
-        export MIZE_CONFIG_FILE=${self}/default-config.toml
+        export MIZE_CONFIG_FILE=${self}/test-config.toml
       '';
     };
 
   }) // {
 
 ############################## SOME GLOBAL OUTPUTS ##############################
-    inherit inputs;
+    inherit inputs self;
   };
 }
 

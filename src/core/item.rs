@@ -13,30 +13,30 @@ use ciborium::Value as CborValue;
 
 // a item always has to do with a Instance, which takes care of how it is updated
 #[derive(Debug)]
-pub struct Item<S: Store + Sized> {
+pub struct Item<'a, S: Store + Sized> {
     pub id: MizeId,
-    pub instance: Instance<S>
+    pub instance: &'a Instance<S>
 }
 
 // without an Instance it is not an item, but only the "data of an item"
 // and this type for now is just an alias to CborValue
 pub type ItemData = CborValue;
 
-impl<S: Store> Item<S> {
-    pub fn id(&self) -> &MizeId {
-        &self.id
+impl<S: Store> Item<'_, S> {
+    pub fn id(&self) -> MizeId {
+        self.id.clone()
     }
 
     pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
         // this will call from the instance which gets the value from the store
-        self.instance.store.get_value_raw(&self.id())
+        self.instance.store.get_value_raw(self.id())
     }
 }
 
-impl<S: Store> Display for Item<S> {
+impl<S: Store> Display for Item<'_, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.value_raw() {
-            Ok(value) => match String::from_utf8(value) {
+            Ok(value) => match String::from_utf8(value.to_owned()) {
                 Ok(string) => write!(f, "{}", string),
                 Err(_) => write!(f, "{:?}", self.value_raw()),
             }

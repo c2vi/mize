@@ -260,10 +260,10 @@ fn level_from_env(var_name: &str, log_level: LevelFilter) -> (Option<log::LevelF
 
 fn cli_matches() -> clap::ArgMatches {
 
-    let store_arg = Arg::new("store")
-        .short('s')
-        .long("store")
-        .help("The folder used as the Itemstore");
+    let folder_arg = Arg::new("folder")
+        .short('f')
+        .long("folder")
+        .help("The folder the Instance stores all it's data and the socket for connections");
 
     let main = Command::new(APPNAME)
         .version(crate_version!())
@@ -284,6 +284,7 @@ fn cli_matches() -> clap::ArgMatches {
             .action(ArgAction::SetTrue)
             .help("set the log-level to OFF")
         )
+        .arg(&folder_arg)
         .subcommand(
                 Command::new("run")
                 .aliases(["r"])
@@ -295,30 +296,29 @@ fn cli_matches() -> clap::ArgMatches {
         .subcommand(
                 Command::new("mount")
                 .aliases(["m"])
-                .arg(&store_arg)
             )
         .subcommand(
                 Command::new("get")
                 .aliases(["g"])
-                .arg(&store_arg)
+                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to get"))
             )
         .subcommand(
                 Command::new("set")
                 .aliases(["s"])
-                .arg(&store_arg)
+                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to set"))
             )
         .subcommand(
                 Command::new("show")
                 .aliases(["so"])
-                .arg(&store_arg)
+                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to sub to and show"))
             )
         .subcommand(
                 Command::new("call")
                 .aliases(["c"])
-                .arg(&store_arg)
+                .arg(&folder_arg)
             )
         .arg_required_else_help(true);
 

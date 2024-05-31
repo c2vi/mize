@@ -12,7 +12,15 @@ use mize::instance::Instance;
 
 pub fn run(sub_matches: &ArgMatches) -> MizeResult<()> {
 
-    let instance = Instance::new();
+    // TODO NEXT!!!
+    // - add --system arg
+    // - add --user arg
+    // - --config arg
+    // - to set a location, where there will be a /store and a /sock
+    // - listen for connections on that sock
+    // - msg handeling
+    let instance = Instance::with_config(todo!());
+
     /*
     let instance_path = match sub_matches.get_one::<String>("store") {
         Some(a) => PathBuf::from(a),

@@ -29,6 +29,7 @@ log = "0.4.20"
 tokio = { version = "1.21.0", features = ["sync"] }
 ciborium = { version = "0.2.2", default-features = false }
 serde = "1.0.203"
+interner = { git = "https://github.com/c2vi/interner" }
 
 # wasm dependencies
 wasm-bindgen = { version = "0.2.84", optional = true }

@@ -7,11 +7,12 @@ use uuid::Uuid;
 use std::fs::File;
 use colored::Colorize;
 use std::path::Path;
+use interner::shared::VecStringPool;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
 use crate::instance::store::Store;
 use crate::instance::connection::Connection;
-use crate::id::MizeId;
+use crate::id::{IntoMizeId, MizeId};
 use crate::instance::subscription::Subscription;
 use crate::item::{Item, ItemData};
 use crate::memstore::MemStore;
@@ -31,6 +32,7 @@ pub struct Instance<S: Store> {
     pub store: S,
     peers: Arc<Mutex<Vec<Box<dyn Connection>>>>,
     subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
+    pub id_pool: VecStringPool,
 }
 
 
@@ -46,35 +48,72 @@ impl Instance<MemStore> {
     pub fn new() -> MizeResult<Instance<MemStore>> {
         trace!("[ {} ] Instance::new()", "CALL".yellow());
 
-        let memstore = MemStore::new();
-        let instance = Instance {store: memstore, peers: Arc::new(Mutex::new(Vec::new())), subs: Arc::new(Mutex::new(HashMap::new())) };
+        let store = MemStore::new();
+        let id_pool = VecStringPool::default();
+        let peers = Arc::new(Mutex::new(Vec::new()));
+        let subs = Arc::new(Mutex::new(HashMap::new()));
+        let mut instance = Instance {store, peers, subs, id_pool };
 
+        instance.init();
+
+        return Ok(instance);
+    }
+
+    fn init(&mut self) -> MizeResult<()> {
 
         // platform specific init code
         if cfg!(feature = "os-target") { // on os platforms
-            crate::platform::os::os_instance_init(instance.clone())?
+            crate::platform::os::os_instance_init(self)?
         }
 
         // end of platform specific init code
 
+        Ok(())
+    }
 
-        return Ok(instance);
+    pub fn with_config(config: ItemData) -> MizeResult<Instance<MemStore>> {
+        let mut instance = Instance::new()?;
+        instance.set("0", config.clone());
+        instance.init()?;
+
+        // set it again, so that the passed config data has presidence over anything the init would set
+        instance.set("0", config);
+
+        Ok(instance)
     }
 }
 
 impl<S: Store> Instance<S> {
-    pub fn new_item(self) -> MizeResult<Item<S>> {
-        let id = self.store.new_id()?;
+    pub fn new_item(&self) -> MizeResult<Item<S>> {
+        let id = self.id_from_string(self.store.new_id()?);
         return Ok(Item {id, instance: self});
     }
 
-    pub fn get<I: Into<MizeId>>(self, id: I) -> MizeResult<Item<S>> {
-        return Ok(Item {id: id.into(), instance: self});
+    pub fn get<I: IntoMizeId<S>>(&self, id: I) -> MizeResult<Item<S>> {
+        let id = id.to_mize_id(self);
+        return Ok(Item {id: id.to_mize_id(self), instance: self});
     }
 
-    pub fn set<I: Into<MizeId>, V: Into<ItemData>>(self, id: I, value: V) -> MizeResult<()> {
-        self.store.set(&id.into(), value)
+    pub fn set<I: IntoMizeId<S>, V: Into<ItemData>>(&mut self, id: I, value: V) -> MizeResult<()> {
+        let id = id.to_mize_id(self);
+        self.store.set(id, value)
     }
+
+    pub fn new_id<T: IntoMizeId<S>>(&self, value: T) -> MizeId {
+        value.to_mize_id(self)
+    }
+
+    pub fn id_from_string(&self, string: String) -> MizeId {
+        let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).collect();
+        return MizeId { path: self.id_pool.get(vec_string) };
+    }
+    pub fn id_from_vec_string(&self, vec_string: Vec<String>) -> MizeId {
+        return MizeId { path: self.id_pool.get(vec_string) };
+    }
+//impl<T: Into<String>> From<T> for MizeId {
+    //fn from(value: T) -> Self {
+    //}
+//}
 
 }
 

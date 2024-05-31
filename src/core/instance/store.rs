@@ -9,21 +9,17 @@ pub trait Store {
     // is implemented, so that there can be a multithreaded implementation
     //fn get(self, id: MizeId) -> MizeResult<Item<Self>> where Self: Sized;
 
-    fn set<T: Into<ItemData>>(self, id: &MizeId, data: T) -> MizeResult<()>;
+    fn set<T: Into<ItemData>>(&mut self, id: MizeId, data: T) -> MizeResult<()>;
 
     // in the future should implement transactions, ....
 
     // funcs to do with links, backlinks
-    fn get_links(self, item: Item<Self>) -> MizeResult<Vec<MizeId>> where Self: Sized;
+    fn get_links(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> where Self: Sized;
 
-    fn get_backlinks(self, item: Item<Self>) -> MizeResult<Vec<MizeId>> where Self: Sized;
+    fn get_backlinks(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> where Self: Sized;
 
-    fn new_id(&self) -> MizeResult<MizeId>;
+    fn new_id(&self) -> MizeResult<String>;
 
-    fn get_value_raw(&self, id: &MizeId) -> MizeResult<Vec<u8>>;
+    fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>>;
 }
 
-/// references an item that is stored in a store
-pub trait StoreRef {
-    // do we need this or is this basically an item
-}
