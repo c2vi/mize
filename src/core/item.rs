@@ -1,8 +1,13 @@
 use log::{trace, debug, info, warn, error};
+use serde::Serialize;
+use core::fmt;
+use std::{i128, string};
 use std::{collections::HashMap, path::PathBuf, io::Cursor, fmt::Display};
 use std::fs::File;
 use tokio::sync::Mutex;
 use std::rc::Rc;
+use colored::Colorize;
+use std::io;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::instance::Instance;
@@ -20,7 +25,8 @@ pub struct Item<'a, S: Store + Sized> {
 
 // without an Instance it is not an item, but only the "data of an item"
 // and this type for now is just an alias to CborValue
-pub type ItemData = CborValue;
+#[derive(Debug, Clone)]
+pub struct ItemData ( pub CborValue );
 
 impl<S: Store> Item<'_, S> {
     pub fn id(&self) -> MizeId {
@@ -30,6 +36,9 @@ impl<S: Store> Item<'_, S> {
     pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
         // this will call from the instance which gets the value from the store
         self.instance.store.get_value_raw(self.id())
+    }
+    pub fn as_data_full(&self) -> MizeResult<ItemData> {
+        self.instance.store.get_value_data_full(self.id())
     }
 }
 
@@ -46,233 +55,217 @@ impl<S: Store> Display for Item<'_, S> {
     }
 }
 
+impl ItemData {
+    pub fn new() -> ItemData {
+        ItemData(CborValue::Null)
+    }
 
+    pub fn merge(&mut self, other: ItemData) {
+        item_data_merge(self, other)
+    }
 
+    pub fn null() -> CborValue {
+        CborValue::Null
+    }
 
-/*
-#[derive(Debug)]
-pub enum Item {
-    Cbor(ItemCbor),
-    Folder(ItemFolder),
-    Ref(ItemRef),
-}
-
-#[derive(Clone, Debug)]
-pub struct ItemCbor {
-    pub inner: CborValue,
-    pub id: MizeId,
-}
-
-#[derive(Debug)]
-pub struct ItemFolder {
-    pub path: PathBuf,
-    pub id: MizeId,
-}
-
-#[derive(Debug)]
-pub struct ItemRef {
-    pub store: Mutex<Rc<Itemstore>>,
-    pub id: MizeId,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct MizeId {
-    pub main: u64,
-    pub path: Option<Vec<String>>
-}
-
-pub struct MizeType {
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-
-impl Display for MizeId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(path) = &self.path {
-            write!(f, "{}/{}", self.main, path.join("/"))
-        } else {
-            write!(f, "{}", self.main)
+    pub fn parse<T: Into<String>>(value: T) -> ItemData {
+        let value_str = value.into();
+        if value_str == "false" {
+            return CborValue::Bool(false).into_item_data();
         }
+        if value_str == "false" {
+            return CborValue::Bool(true).into_item_data();
+        }
+        if let Ok(int) = value_str.parse::<i128>() {
+            return int.into_item_data()
+        }
+        return CborValue::Text(value_str).into_item_data();
     }
+
+    pub fn set_path<P: IntoPath, D: IntoItemData>(&mut self, path: P, value: D) -> MizeResult<()> {
+        trace!("[ {} ] ItemData::set_path()", "CALL".yellow());
+        let path = path.into_path();
+        let value = value.into_item_data();
+
+        item_data_set_path(&mut self.0, path, &value.0)
+    }
+
+    pub fn get_path<P: IntoPath>(&self, path: P) -> MizeResult<ItemData> {
+        let path = path.into_path();
+        Ok(item_data_get_path(&self.0, path)?.to_owned().into_item_data())
+    }
+
 }
 
-impl MizeId {
-    pub fn main(main: u64) -> MizeId {
-        MizeId { main, path: None }
-    }
-    pub fn join(self, segment: &str) -> MizeId {
-        let mut new = self.clone();
-        match new.path {
-            None => {
-                new.path = Some(vec![segment.to_owned()]);
+fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {
+    let mut path_iter = path.clone().into_iter();
+    let path_el = match path_iter.nth(0) {
+        Some(val) => val,
+        None => return Ok(data), // our base case
+    };
+    let mut sub_data = &CborValue::Null;
+    match data {
+        CborValue::Map(ref map) => {
+            for (key, val) in map {
+                if let CborValue::Text(key_str) = key {
+                    if key_str == &path_el {
+                        sub_data = val;
+                    }
+                }
             }
-            Some(ref mut val) => {
-                val.push(segment.to_owned());
+        },
+        val => {
+            return Err(MizeError::new()
+                .msg(format!("Failed to get path '{:?}' from ItemData, the data at '{}' is not a map", path, path_el))
+                .msg(format!("{:?} is: {:?}", path_el, val)));
+        },
+    };
+    path_iter.next();
+    item_data_get_path(sub_data, path_iter.collect())
+}
+
+fn item_data_set_path(data: &mut CborValue, path: Vec<String>, new_data: &CborValue) -> MizeResult<()> {
+    trace!("[ {} ] item_data_set_path", "CALL".yellow());
+    trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
+    trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
+    trace!("[ {} ] new_data: {}", "ARG".yellow(), new_data.clone().into_item_data());
+
+    let mut path_iter = path.clone().into_iter();
+    let path_el = match path_iter.nth(0) {
+        Some(val) => val,
+        None => {
+            // our base case
+            *data = new_data.to_owned();
+            return Ok(());
+        }, 
+    };
+    match data {
+        CborValue::Map(ref mut map) => {
+            for (key, val) in map {
+                if let CborValue::Text(key_str) = key {
+                    if key_str == &path_el {
+                        path_iter.next();
+                        return item_data_set_path(val, path_iter.collect(), new_data)
+                    }
+                }
             }
-        }
-        return new;
+        },
+        CborValue::Null => {
+            let map_vec = vec![(CborValue::Text(path_el), CborValue::Null)];
+            *data = CborValue::Map(map_vec);
+            return item_data_set_path(data, path, new_data);
+        },
+        val => {
+            return Err(MizeError::new()
+                .msg(format!("Failed to get path '{:?}' from ItemData, the data at '{}' is not a map", path, path_el))
+                .msg(format!("{:?} is: {:?}", path_el, val)));
+        },
+    };
+    return Err(MizeError::new().msg("unreachable"));
+}
+
+fn item_data_merge(first: &mut ItemData, other: ItemData){
+    match first.0 {
+        _ => {
+            *first = other;
+        },
+        CborValue::Map(ref mut map) => {
+            match other.0 {
+                _ => {
+                    *first = other;
+                }
+                CborValue::Map(mut other_map) => {
+                    let mut to_add = Vec::new();
+                    for (other_key, other_val) in other_map.clone() {
+                        let mut key_found_in_old = false;
+                        for (key, mut val) in map.clone() {
+                            if key == other_key {
+                                val = other_val.clone();
+                                key_found_in_old = true;
+                            }
+                        }
+                        if key_found_in_old == false {
+                            to_add.push((other_key.clone(), other_val.clone()));
+                        }
+                    }
+                    other_map.extend(to_add);
+                },
+            }
+        },
     }
 }
 
+trait IntoPath {
+    fn into_path(self) -> Vec<String>;
+}
 
+pub trait IntoItemData {
+    fn into_item_data(self) -> ItemData;
+}
 
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-impl ItemCbor {
-    fn value_as_file(&self) -> MizeResult<File> {
-        /* sadly does not work like that
-        let cbor_c = self.inner.get("v").ok_or(MizeError::new()
-            .msg(format!("The ItemCbor ({}) does not have a \"c\" field ... so can't get it as a file", self.id()?)))?;
-        match cbor_c {
-            Cbor::Bytes(val) => {
-                return Ok(Cursor::new(val.clone()).into());
-            },
-            _ => {
-                return Err(MizeError::new().msg(format!("The value fo item ({}) is not of type Cbor::Bytes", self.id()?)));
-            },
-        }
-        */
-        return File::open(self.value_as_path()?).mize_result_msg("Could not open file");
-    }
-
-    fn value_as_path(&self) -> MizeResult<PathBuf> {
-        todo!()
-    }
-
-    /* an old way of getting the id this
-    fn id(self) -> MizeResult<MizeId> {
-        let cbor_item = self.inner.get("item".to_owned()).ok_or(MizeError::new()
-            .msg("ItemCbor had no path: \"item\""))?;
-
-        let cbor_id = match cbor_item {
-            Cbor::Map(map) => {
-                map.get("id").ok_or(MizeError::new().msg("ItemCbor had no path \"item/id\""))
-            },
-            _ => {
-                return Err(MizeError::new().msg("ItemCbor path \"item\" was not of type Cbor::Map"));
-            },
-        };
-
-        let id = match cbor_id {
-            Cbor::Unsigned(val) => val.into_u64(),
-            _ => {
-                return Err(MizeError::new().msg("ItemCbor path \"item/id\" was not of type Cbor::Unsigned"));
-            },
-            
-        };
-
-        return Ok(MizeId { inner: id });
-    }
-    // */
-
-    fn id(&self) -> MizeResult<MizeId> {
-        Ok(self.id.clone())
-    }
-    fn as_cbor(&self) -> MizeResult<ItemCbor> {
-        Ok(self.clone())
-    }
-    fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
-        todo!()
-        //let cbor_content = 
-        //std::fs::write(path.join(format!("{}", self.id)), );
+impl IntoPath for &str {
+    fn into_path(self) -> Vec<String> {
+        self.to_owned().split("/").map(|v| v.to_owned()).collect()
     }
 }
 
-impl ItemFolder {
-    fn value_as_file(&self) -> MizeResult<File> {
-        let file = File::open(self.path.join("v"))
-            .mize_result_msg(format!("Could not open the value file of item ({})", self.id()?));
-        return file;
+impl IntoPath for &[&str] {
+    fn into_path(self) -> Vec<String> {
+        self.into_iter().map(|v| (*v).to_owned()).collect()
     }
-
-    fn value_as_path(&self) -> MizeResult<PathBuf> {
-        return Ok(self.path.clone());
+}
+impl IntoPath for Vec<String> {
+    fn into_path(self) -> Vec<String> {
+        self
     }
-
-    fn id(&self) -> MizeResult<MizeId> {
-        Ok(self.id.clone())
-    }
-
-    fn as_cbor(&self) -> MizeResult<ItemCbor> {
-        todo!()
-    }
-
-    fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
-        Ok(())
+}
+impl IntoPath for Vec<&str> {
+    fn into_path(self) -> Vec<String> {
+        self.into_iter().map(|v| v.to_owned()).collect()
     }
 }
 
-impl ItemRef {
-    fn value_as_file(&self) -> MizeResult<File> {
-        todo!()
+impl IntoItemData for &str {
+    fn into_item_data(self) -> ItemData {
+        ItemData::parse(self)
     }
-
-    fn value_as_path(&self) -> MizeResult<PathBuf> {
-        todo!()
+}
+impl IntoItemData for CborValue {
+    fn into_item_data(self) -> ItemData {
+        ItemData ( self )
     }
-
-    fn id(&self) -> MizeResult<MizeId> {
-       return Ok(self.id.clone());
+}
+impl IntoItemData for ItemData {
+    fn into_item_data(self) -> ItemData {
+        self
     }
-
-    fn as_cbor(&self) -> MizeResult<ItemCbor> {
-        todo!()
-    }
-
-    async fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
-        let store = self.store.lock().await;
-        for (key, value) in self.map.iter() {
-            // TODO right here!!!!
-        }
-            todo!()
+}
+impl IntoItemData for i128 {
+    fn into_item_data(self) -> ItemData {
+        ItemData(self.into())
     }
 }
 
-impl Item {
-    pub fn value_as_file(&self) -> MizeResult<File> {
-        match self {
-            Item::Cbor(val) => val.value_as_file(),
-            Item::Ref(val) => val.value_as_file(),
-            Item::Folder(val) => val.value_as_file(),
-        }
-    }
-
-    pub fn value_as_path(&self) -> MizeResult<PathBuf> {
-        match self {
-            Item::Cbor(val) => val.value_as_path(),
-            Item::Ref(val) => val.value_as_path(),
-            Item::Folder(val) => val.value_as_path(),
-        }
-    }
-
-    pub fn id(&self) -> MizeResult<MizeId> {
-        match self {
-            Item::Cbor(val) => val.id(),
-            Item::Ref(val) => val.id(),
-            Item::Folder(val) => val.id(),
-        }
-    }
-
-    pub fn as_cbor(&self) -> MizeResult<ItemCbor> {
-        match self {
-            Item::Cbor(val) => val.as_cbor(),
-            Item::Ref(val) => val.as_cbor(),
-            Item::Folder(val) => val.as_cbor(),
-        }
-    }
-
-    pub fn write_to_path(&self, path: PathBuf) -> MizeResult<()> {
-        match self {
-            Item::Cbor(val) => val.write_to_path(path),
-            Item::Ref(val) => val.write_to_path(path),
-            Item::Folder(val) => val.write_to_path(path),
-        }
-    }
-    pub fn load_json(json_str: &str) -> MizeResult<Item> {
-        todo!()
+impl fmt::Display for ItemData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\nItemData: ");
+        let display_writer = DisplayWriter (f);
+        self.0.serialize(&mut serde_json::Serializer::pretty(display_writer))
+            .map_err(|serde_err| std::fmt::Error)
     }
 }
-*/
+
+// thanks to: https://stackoverflow.com/a/61768916
+struct DisplayWriter<'a, 'b>(&'a mut fmt::Formatter<'b>);
+
+impl<'a, 'b> io::Write for DisplayWriter<'a, 'b> {
+    fn write(&mut self, bytes: &[u8]) -> std::result::Result<usize, std::io::Error> {
+        
+        self.0.write_str(&String::from_utf8_lossy(bytes))
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> { todo!() }
+}
 

@@ -21,5 +21,7 @@ pub trait Store {
     fn new_id(&self) -> MizeResult<String>;
 
     fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>>;
+
+    fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData>;
 }
 

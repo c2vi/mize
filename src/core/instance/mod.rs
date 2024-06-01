@@ -10,6 +10,7 @@ use std::path::Path;
 use interner::shared::VecStringPool;
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
+use crate::instance;
 use crate::instance::store::Store;
 use crate::instance::connection::Connection;
 use crate::id::{IntoMizeId, MizeId};
@@ -45,16 +46,22 @@ pub enum RealmId {
 */
 
 impl Instance<MemStore> {
-    pub fn new() -> MizeResult<Instance<MemStore>> {
-        trace!("[ {} ] Instance::new()", "CALL".yellow());
-
+    pub fn empty() -> Instance<MemStore> {
         let store = MemStore::new();
         let id_pool = VecStringPool::default();
         let peers = Arc::new(Mutex::new(Vec::new()));
         let subs = Arc::new(Mutex::new(HashMap::new()));
         let mut instance = Instance {store, peers, subs, id_pool };
+        return instance;
+    }
+    pub fn new() -> MizeResult<Instance<MemStore>> {
+        trace!("[ {} ] Instance::new()", "CALL".yellow());
+
+        let mut instance = Instance::empty();
 
         instance.init();
+
+        debug!("instance inited with conifg: {}", instance.get("0/config")?.as_data_full()?);
 
         return Ok(instance);
     }
@@ -72,12 +79,15 @@ impl Instance<MemStore> {
     }
 
     pub fn with_config(config: ItemData) -> MizeResult<Instance<MemStore>> {
-        let mut instance = Instance::new()?;
+        let mut instance = Instance::empty();
         instance.set("0", config.clone());
         instance.init()?;
 
         // set it again, so that the passed config data has presidence over anything the init would set
+        debug!("overwriting instance config again with the one passed to Instance::with_config()");
         instance.set("0", config);
+
+        debug!("instance inited with conifg: {}", instance.get("0/config")?.as_data_full()?);
 
         Ok(instance)
     }

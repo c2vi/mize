@@ -13,9 +13,8 @@ use mize::instance::Instance;
 pub fn run(sub_matches: &ArgMatches) -> MizeResult<()> {
 
     // TODO NEXT!!!
-    // - add --system arg
-    // - add --user arg
     // - --config arg
+    // - --folder
     // - to set a location, where there will be a /store and a /sock
     // - listen for connections on that sock
     // - msg handeling

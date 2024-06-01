@@ -19,7 +19,7 @@ pub type MemStoreId = u64;
 
 #[derive(Debug)]
 struct MemStoreInner {
-    map: HashMap<u64, CborValue>,
+    map: HashMap<u64, ItemData>,
     next_id: u64,
 }
 
@@ -60,7 +60,13 @@ impl Store for MemStore {
         id_iter.next();
         let id_without_first = id_iter.collect();
 
-        Ok(get_raw_from_cbor(cbor_val, id_without_first)?.to_owned())
+        Ok(get_raw_from_cbor(&cbor_val.0, id_without_first)?.to_owned())
+    }
+
+    fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData> {
+        let inner = self.inner.lock()?;
+        inner.map.get(&id_to_u64(id.clone())?)
+            .ok_or(MizeError::new().msg(format!("Item wich id '{}' has not data stored in this MemStore", id.clone()))).cloned()
     }
 }
 
@@ -83,7 +89,6 @@ fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult
         CborValue::Text(string) => Ok(string.as_bytes()),
         CborValue::Map(map) => {
             let mut inner_val: &CborValue = &CborValue::Null;
-            trace!("map: {:?}", map);
             for (key, val) in map.into_iter() {
                 let first_path_string = *path.iter().nth(0)
                     .ok_or(MizeError::new()

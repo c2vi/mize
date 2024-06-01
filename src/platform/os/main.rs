@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use clap::{ArgAction, ArgMatches};
 use clap::{Arg, crate_version, Command};
 
-use mize::error::MizeError;
+use mize::error::{MizeError, MizeResult};
+use mize::item::ItemData;
 use tokio::sync::{Mutex, mpsc};
 use std::sync::Arc;
 use log::Level;
@@ -258,12 +259,9 @@ fn level_from_env(var_name: &str, log_level: LevelFilter) -> (Option<log::LevelF
     return (None, log_messages);
 }
 
+
 fn cli_matches() -> clap::ArgMatches {
 
-    let folder_arg = Arg::new("folder")
-        .short('f')
-        .long("folder")
-        .help("The folder the Instance stores all it's data and the socket for connections");
 
     let main = Command::new(APPNAME)
         .version(crate_version!())
@@ -273,18 +271,37 @@ fn cli_matches() -> clap::ArgMatches {
             .long("verbose")
             .short('v')
             .action(ArgAction::Count)
+            .global(true)
         )
         .arg(Arg::new("log-level")
             .long("log-level")
             .value_name("LOGLEVEL")
             .help("set the log-level to one of OFF, ERROR, WARN, INFO, DEBUG, TRACE")
+            .global(true)
         )
         .arg(Arg::new("silent")
             .long("silent")
             .action(ArgAction::SetTrue)
             .help("set the log-level to OFF")
+            .global(true)
         )
-        .arg(&folder_arg)
+        .arg(Arg::new("folder")
+            .short('f')
+            .long("folder")
+            .help("The folder the Instance stores all it's data and the socket for connections")
+            .global(true)
+        )
+        .arg(Arg::new("config")
+            .short('c')
+            .long("config")
+            .help("overwrite config options")
+            .global(true)
+        )
+        .arg(Arg::new("config-file")
+            .long("config-file")
+            .help("specify a config file")
+            .global(true)
+        )
         .subcommand(
                 Command::new("run")
                 .aliases(["r"])
@@ -300,25 +317,21 @@ fn cli_matches() -> clap::ArgMatches {
         .subcommand(
                 Command::new("get")
                 .aliases(["g"])
-                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to get"))
             )
         .subcommand(
                 Command::new("set")
                 .aliases(["s"])
-                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to set"))
             )
         .subcommand(
                 Command::new("show")
                 .aliases(["so"])
-                .arg(&folder_arg)
                 .arg(Arg::new("id").help("The id or path to sub to and show"))
             )
         .subcommand(
                 Command::new("call")
                 .aliases(["c"])
-                .arg(&folder_arg)
             )
         .arg_required_else_help(true);
 
