@@ -88,6 +88,7 @@ in {
         ])
         */
         (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
+        lldb gdb
       ];
       shellHook = ''
         export MIZE_CONFIG_FILE=${self}/test-config.toml
