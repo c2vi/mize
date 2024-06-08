@@ -225,6 +225,10 @@ fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
             }
         }
 
+        // if other is Null, don't asign
+        // this is gonna have repercussions.... because it's not clean behaviour
+        (merge_into, CborValue::Null) => {
+        }
 
         // in any other case we just want to set merge_into to other
         // also this is the base case
