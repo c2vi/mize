@@ -14,6 +14,7 @@ pub type MizeResult<T> = Result<T, MizeError>;
 pub trait MizeResultTrait<T> {
     fn critical(self) -> T;
 }
+
 pub trait IntoMizeResult<T, S> {
     fn mize_result(self) -> MizeResult<T>;
     fn mize_result_msg(self, msg: S) -> MizeResult<T> where S: std::fmt::Display ;

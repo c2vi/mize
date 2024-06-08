@@ -318,6 +318,10 @@ fn cli_matches() -> clap::ArgMatches {
                 Command::new("get")
                 .aliases(["g"])
                 .arg(Arg::new("id").help("The id or path to get"))
+            .arg(Arg::new("recurse")
+                .short('r')
+                .action(ArgAction::Count)
+                )
             )
         .subcommand(
                 Command::new("set")

@@ -79,6 +79,8 @@ impl Instance<MemStore> {
     }
 
     pub fn with_config(config: ItemData) -> MizeResult<Instance<MemStore>> {
+        trace!("[ {} ] Instance::with_config()", "CALL".yellow());
+        trace!("config: {}", config);
         let mut instance = Instance::empty();
         instance.set("0", config.clone());
         instance.init()?;
@@ -87,7 +89,8 @@ impl Instance<MemStore> {
         debug!("overwriting instance config again with the one passed to Instance::with_config()");
         instance.set("0", config);
 
-        debug!("instance inited with conifg: {}", instance.get("0/config")?.as_data_full()?);
+        //debug!("instance inited with conifg: {}", instance.get("0/config")?);
+        debug!("instance inited with conifg: no");
 
         Ok(instance)
     }
@@ -96,17 +99,20 @@ impl Instance<MemStore> {
 impl<S: Store> Instance<S> {
     pub fn new_item(&self) -> MizeResult<Item<S>> {
         let id = self.id_from_string(self.store.new_id()?);
-        return Ok(Item {id, instance: self});
+        return Ok(Item::new(id, &self));
     }
 
     pub fn get<I: IntoMizeId<S>>(&self, id: I) -> MizeResult<Item<S>> {
         let id = id.to_mize_id(self);
-        return Ok(Item {id: id.to_mize_id(self), instance: self});
+        return Ok(Item::new(id, &self));
     }
 
     pub fn set<I: IntoMizeId<S>, V: Into<ItemData>>(&mut self, id: I, value: V) -> MizeResult<()> {
         let id = id.to_mize_id(self);
-        self.store.set(id, value)
+        let item_data = value.into();
+        let mut item = self.get(id.clone())?;
+        item.merge(item_data)?;
+        Ok(())
     }
 
     pub fn new_id<T: IntoMizeId<S>>(&self, value: T) -> MizeId {

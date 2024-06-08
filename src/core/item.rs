@@ -19,7 +19,7 @@ use ciborium::Value as CborValue;
 // a item always has to do with a Instance, which takes care of how it is updated
 #[derive(Debug)]
 pub struct Item<'a, S: Store + Sized> {
-    pub id: MizeId,
+    id: MizeId,
     pub instance: &'a Instance<S>
 }
 
@@ -33,6 +33,10 @@ impl<S: Store> Item<'_, S> {
         self.id.clone()
     }
 
+    pub fn new(id: MizeId, instance: &Instance<S>) -> Item<S> {
+        Item { id, instance }
+    }
+
     pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
         // this will call from the instance which gets the value from the store
         self.instance.store.get_value_raw(self.id())
@@ -40,17 +44,21 @@ impl<S: Store> Item<'_, S> {
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
         self.instance.store.get_value_data_full(self.id())
     }
+    pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
+        //trace!("[ {} ] Item.merge()", "CALL".yellow());
+        let mut old_data = self.instance.store.get_value_data_full(self.id())?;
+        //trace!("old_data: {:?}", old_data);
+        old_data.merge(value.into());
+        //trace!("new_data: {:?}", old_data);
+        self.instance.store.set(self.id(), old_data)?;
+        Ok(())
+    }
 }
 
 impl<S: Store> Display for Item<'_, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.value_raw() {
-            Ok(value) => match String::from_utf8(value.to_owned()) {
-                Ok(string) => write!(f, "{}", string),
-                Err(_) => write!(f, "{:?}", self.value_raw()),
-            }
-            Err(err) => {err.log(); Ok(())},
-        };
+        let item_data = self.as_data_full().map_err(|_| std::fmt::Error)?;
+        write!(f, "{}", item_data);
         return Ok(());
     }
 }
@@ -83,7 +91,7 @@ impl ItemData {
     }
 
     pub fn set_path<P: IntoPath, D: IntoItemData>(&mut self, path: P, value: D) -> MizeResult<()> {
-        trace!("[ {} ] ItemData::set_path()", "CALL".yellow());
+        //trace!("[ {} ] ItemData::set_path()", "CALL".yellow());
         let path = path.into_path();
         let value = value.into_item_data();
 
@@ -103,6 +111,7 @@ fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborVa
         Some(val) => val,
         None => return Ok(data), // our base case
     };
+
     let mut sub_data = &CborValue::Null;
     match data {
         CborValue::Map(ref map) => {
@@ -120,22 +129,21 @@ fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborVa
                 .msg(format!("{:?} is: {:?}", path_el, val)));
         },
     };
-    path_iter.next();
     item_data_get_path(sub_data, path_iter.collect())
 }
 
-fn item_data_set_path(data: &mut CborValue, path: Vec<String>, new_data: &CborValue) -> MizeResult<()> {
-    trace!("[ {} ] item_data_set_path", "CALL".yellow());
-    trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
-    trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
-    trace!("[ {} ] new_data: {}", "ARG".yellow(), new_data.clone().into_item_data());
+fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &CborValue) -> MizeResult<()> {
+    //trace!("[ {} ] item_data_set_path()", "CALL".yellow());
+    //trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
+    //trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
+    //trace!("[ {} ] data_to_set: {}", "ARG".yellow(), data_to_set.clone().into_item_data());
 
     let mut path_iter = path.clone().into_iter();
     let path_el = match path_iter.nth(0) {
         Some(val) => val,
         None => {
             // our base case
-            *data = new_data.to_owned();
+            *data = data_to_set.to_owned();
             return Ok(());
         }, 
     };
@@ -145,15 +153,19 @@ fn item_data_set_path(data: &mut CborValue, path: Vec<String>, new_data: &CborVa
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
                         path_iter.next();
-                        return item_data_set_path(val, path_iter.collect(), new_data)
+                        return item_data_set_path(val, path_iter.collect(), data_to_set);
                     }
                 }
             }
         },
         CborValue::Null => {
-            let map_vec = vec![(CborValue::Text(path_el), CborValue::Null)];
+            let mut inner_value = CborValue::Null;
+            item_data_set_path(&mut inner_value, path_iter.collect(), data_to_set);
+
+            let map_vec = vec![(CborValue::Text(path_el), inner_value)];
             *data = CborValue::Map(map_vec);
-            return item_data_set_path(data, path, new_data);
+
+            return Ok(());
         },
         val => {
             return Err(MizeError::new()
@@ -165,15 +177,14 @@ fn item_data_set_path(data: &mut CborValue, path: Vec<String>, new_data: &CborVa
 }
 
 fn item_data_merge(first: &mut ItemData, other: ItemData){
+    //trace!("[ {} ] item_data_merge()", "CALL".yellow());
+    //trace!("[ {} ] first: {}", "ARG".yellow(), first.clone().into_item_data());
+    //trace!("[ {} ] other: {}", "ARG".yellow(), other.clone().into_item_data());
+
     match first.0 {
-        _ => {
-            *first = other;
-        },
         CborValue::Map(ref mut map) => {
+            //trace!("data is a map: {:?}", map);
             match other.0 {
-                _ => {
-                    *first = other;
-                }
                 CborValue::Map(mut other_map) => {
                     let mut to_add = Vec::new();
                     for (other_key, other_val) in other_map.clone() {
@@ -190,7 +201,13 @@ fn item_data_merge(first: &mut ItemData, other: ItemData){
                     }
                     other_map.extend(to_add);
                 },
+                _ => {
+                    *first = other;
+                }
             }
+        },
+        _ => {
+            *first = other;
         },
     }
 }

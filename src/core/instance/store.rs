@@ -9,7 +9,7 @@ pub trait Store {
     // is implemented, so that there can be a multithreaded implementation
     //fn get(self, id: MizeId) -> MizeResult<Item<Self>> where Self: Sized;
 
-    fn set<T: Into<ItemData>>(&mut self, id: MizeId, data: T) -> MizeResult<()>;
+    fn set<T: Into<ItemData>>(&self, id: MizeId, data: T) -> MizeResult<()>;
 
     // in the future should implement transactions, ....
 
