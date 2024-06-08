@@ -98,7 +98,6 @@ fn config_from_string(config_string: String) -> MizeResult<ItemData> {
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
         let mut path_vec = vec!["config"];
         path_vec.extend(path.split("."));
-        println!("path_vec: {:?}", path_vec);
 
         config.set_path(path_vec, ItemData::parse(value))?;
     }

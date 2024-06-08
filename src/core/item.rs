@@ -45,11 +45,12 @@ impl<S: Store> Item<'_, S> {
         self.instance.store.get_value_data_full(self.id())
     }
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
-        //trace!("[ {} ] Item.merge()", "CALL".yellow());
         let mut old_data = self.instance.store.get_value_data_full(self.id())?;
-        //trace!("old_data: {:?}", old_data);
-        old_data.merge(value.into());
-        //trace!("new_data: {:?}", old_data);
+
+        let new_data = value.into();
+
+        old_data.merge(new_data);
+
         self.instance.store.set(self.id(), old_data)?;
         Ok(())
     }
@@ -69,7 +70,7 @@ impl ItemData {
     }
 
     pub fn merge(&mut self, other: ItemData) {
-        item_data_merge(self, other)
+        item_data_merge(&mut self.0, &other.0);
     }
 
     pub fn null() -> CborValue {
@@ -176,39 +177,60 @@ fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &Cbo
     return Err(MizeError::new().msg("unreachable"));
 }
 
-fn item_data_merge(first: &mut ItemData, other: ItemData){
-    //trace!("[ {} ] item_data_merge()", "CALL".yellow());
-    //trace!("[ {} ] first: {}", "ARG".yellow(), first.clone().into_item_data());
-    //trace!("[ {} ] other: {}", "ARG".yellow(), other.clone().into_item_data());
+fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
+    // needs to be recursive
 
-    match first.0 {
-        CborValue::Map(ref mut map) => {
-            //trace!("data is a map: {:?}", map);
-            match other.0 {
-                CborValue::Map(mut other_map) => {
-                    let mut to_add = Vec::new();
-                    for (other_key, other_val) in other_map.clone() {
-                        let mut key_found_in_old = false;
-                        for (key, mut val) in map.clone() {
-                            if key == other_key {
-                                val = other_val.clone();
-                                key_found_in_old = true;
-                            }
-                        }
-                        if key_found_in_old == false {
-                            to_add.push((other_key.clone(), other_val.clone()));
-                        }
+    match (merge_into, other) {
+        // if both are maps
+        // merge the keys/vals in the maps and call recursively on them
+        (CborValue::Map(ref mut merge_into_map), CborValue::Map(ref other_map)) => {
+            // go through other_map and merge those keys/values to merge_into
+            for (other_key, other_val) in other_map {
+
+                // so find that same vale in merge_into, if exists recursively merge, else just add to
+                // vec
+                let mut found_value = CborValue::Null;
+                let mut value_found = false;
+                let mut new_value_for_merge_into: Vec<(CborValue, CborValue)> = Vec::new(); // here we collect the
+                                                                           // new contents of the
+                                                                           // map, to assign later
+                                                                           // to merge_into_map
+
+                for (merge_into_key, merge_into_val) in merge_into_map.clone() {
+                    if merge_into_key == *other_key {
+                        value_found = true;
+                        found_value = merge_into_val.to_owned();
+                        // if we found it, also don't add it to new_value_for_merge_into
+
+                    } else {
+                        //if not found push to new_value_for_merge_into
+                        new_value_for_merge_into.push((merge_into_key.to_owned(), merge_into_val.to_owned()));
                     }
-                    other_map.extend(to_add);
-                },
-                _ => {
-                    *first = other;
                 }
+
+                if value_found {
+                    // we found it so merge and asign
+                    item_data_merge(&mut found_value, other_val);
+
+                    // to asign push to new_value_for_merge_into, because the old was removed already
+                    new_value_for_merge_into.push((other_key.to_owned(), found_value));
+
+                } else {
+                    // if not found, just add the other_key/val to new_value_for_merge_into
+                    new_value_for_merge_into.push((other_key.to_owned(), other_val.to_owned()));
+                }
+
+                // finally, we need to asign the new_value_for_merge_into into merge_into
+                *merge_into_map = new_value_for_merge_into;
             }
-        },
-        _ => {
-            *first = other;
-        },
+        }
+
+
+        // in any other case we just want to set merge_into to other
+        // also this is the base case
+        (merge_into, other) => {
+            *merge_into = other.to_owned();
+        }
     }
 }
 
