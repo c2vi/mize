@@ -7,6 +7,11 @@ use std::io;
 use colored::Colorize;
 use log::{trace, debug, info, warn, error};
 
+#[macro_export]
+macro_rules! mize_err {
+    ($($arg:tt)*) => { MizeError::new().msg(format!( $($arg)*)) };
+}
+
 use crate::proto::MizeMessage;
 
 pub type MizeResult<T> = Result<T, MizeError>;

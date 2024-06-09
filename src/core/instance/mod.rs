@@ -130,7 +130,19 @@ impl<S: Store> Instance<S> {
     //fn from(value: T) -> Self {
     //}
 //}
+    pub fn migrate_to_store<New: Store>(&mut self, new_store: New) -> MizeResult<Instance<New>> {
+        let old_store = self.store;
 
+        for id in old_store.id_iter()? {
+            let data = self.store.get_value_data_full(self.id_from_string(id))?;
+
+            let id_of_new_store = new_store.new_id()?;
+            new_store.set(self.id_from_string(id_of_new_store), data.to_owned())?;
+        };
+
+        self.store = new_store as S;
+        Ok(Instance { store: new_store, subs: self.subs, peers: self.peers, id_pool: self.id_pool })
+    }
 }
 
 impl<S: Store> fmt::Debug for Instance<S> {

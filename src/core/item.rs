@@ -41,6 +41,11 @@ impl<S: Store> Item<'_, S> {
         // this will call from the instance which gets the value from the store
         self.instance.store.get_value_raw(self.id())
     }
+    pub fn value_string(&self) -> MizeResult<String> {
+        let raw = self.value_raw()?;
+        String::from_utf8(raw.clone())
+            .mize_result_msg(format!("failed to convert raw value from item '{}' into a utf-8 string. raw value was: '{:02X?}'", self.id(), raw))
+    }
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
         self.instance.store.get_value_data_full(self.id())
     }
@@ -71,6 +76,10 @@ impl ItemData {
 
     pub fn merge(&mut self, other: ItemData) {
         item_data_merge(&mut self.0, &other.0);
+    }
+
+    pub fn cbor(&self) -> &CborValue {
+        &self.0
     }
 
     pub fn null() -> CborValue {
@@ -106,7 +115,7 @@ impl ItemData {
 
 }
 
-fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {
+pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {
     let mut path_iter = path.clone().into_iter();
     let path_el = match path_iter.nth(0) {
         Some(val) => val,
@@ -133,7 +142,7 @@ fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborVa
     item_data_get_path(sub_data, path_iter.collect())
 }
 
-fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &CborValue) -> MizeResult<()> {
+pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &CborValue) -> MizeResult<()> {
     //trace!("[ {} ] item_data_set_path()", "CALL".yellow());
     //trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
     //trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
@@ -177,7 +186,7 @@ fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &Cbo
     return Err(MizeError::new().msg("unreachable"));
 }
 
-fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
+pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
     // needs to be recursive
 
     match (merge_into, other) {

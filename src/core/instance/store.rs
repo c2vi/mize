@@ -1,6 +1,12 @@
+
+use std::iter::Map;
+use std::option::Iter;
+
 use crate::error::MizeResult;
 use crate::item::{Item, ItemData};
 use crate::id::MizeId;
+use crate::memstore::MemStore;
+use crate::instance::Instance;
 
 pub trait Store {
     // should have the ability to be multi threaded, if the underlying implementation supports 
@@ -23,5 +29,7 @@ pub trait Store {
     fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>>;
 
     fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData>;
+
+    fn id_iter(&self) -> MizeResult<impl Iterator<Item=String> + '_>;
 }
 

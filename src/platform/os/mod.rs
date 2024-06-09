@@ -10,9 +10,16 @@ use crate::instance::store::Store;
 use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::item::{ItemData, IntoItemData};
+use crate::memstore::MemStore;
+
+use self::fsstore::FileStore;
+
+mod fsstore;
+//mod web;
+//mod unix-socket;
 
 
-pub fn os_instance_init<S: Store>(instance: &mut Instance<S>) -> MizeResult<()> {
+pub fn os_instance_init<S: Store>(instance: Instance<MemStore>) -> MizeResult<Instance<FileStore>> {
     // this is the code, that runs to initialize an Instance on a system with an os present.
 
     ////// load MIZE_CONFIG_FILE as the instance, which is item 0
@@ -51,7 +58,14 @@ pub fn os_instance_init<S: Store>(instance: &mut Instance<S>) -> MizeResult<()> 
         }
     };
 
+    ////// if a config.store is set, upgrade to the filestore there
+    let store_path = instance.get("0/conifg/store")?.value_string()?;
 
+    if store_path != "" {
+        let file_store = FileStore::new(store_path)?;
+        let new_instance = &mut instance.migrate_to_store(file_store)?;
+        return Ok(new_instance);
+    }
 
     return Ok(());
 }

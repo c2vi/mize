@@ -10,6 +10,7 @@ use crate::id::MizeId;
 use crate::instance::store::Store;
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::item::{Item, ItemData};
+use crate::instance::Instance;
 
 #[derive(Clone, Debug)]
 pub struct MemStore {
@@ -79,6 +80,12 @@ impl Store for MemStore {
 
         return Ok(ret_data);
     }
+    fn id_iter(&self) -> MizeResult<impl Iterator<Item=String> + '_> {
+        let inner = self.inner.lock()?;
+
+        let keys: Vec<String> = inner.map.keys().map(|v| format!("{}", v)).collect();
+        return Ok(keys.into_iter());
+    }
 }
 
 impl MemStore {
@@ -94,7 +101,7 @@ fn id_to_u64(id: MizeId) -> MizeResult<u64> {
         .mize_result_msg(format!("Could not parse the store_part of mizeid {} into a u64 for the MemStore", id))
 }
 
-fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult<&'a [u8]> {
+pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult<&'a [u8]> {
     trace!("[ {} ] get_raw_from_cbor()", "CALL".yellow());
     trace!("[ {} ] value: {:?}", "ARG".yellow(), value);
     trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
