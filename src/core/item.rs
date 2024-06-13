@@ -18,9 +18,9 @@ use ciborium::Value as CborValue;
 
 // a item always has to do with a Instance, which takes care of how it is updated
 #[derive(Debug)]
-pub struct Item<'a, S: Store + Sized> {
+pub struct Item<'a> {
     id: MizeId,
-    pub instance: &'a Instance<S>
+    pub instance: &'a Instance
 }
 
 // without an Instance it is not an item, but only the "data of an item"
@@ -28,12 +28,12 @@ pub struct Item<'a, S: Store + Sized> {
 #[derive(Debug, Clone)]
 pub struct ItemData ( pub CborValue );
 
-impl<S: Store> Item<'_, S> {
+impl Item<'_> {
     pub fn id(&self) -> MizeId {
         self.id.clone()
     }
 
-    pub fn new(id: MizeId, instance: &Instance<S>) -> Item<S> {
+    pub fn new(id: MizeId, instance: &Instance) -> Item {
         Item { id, instance }
     }
 
@@ -41,14 +41,17 @@ impl<S: Store> Item<'_, S> {
         // this will call from the instance which gets the value from the store
         self.instance.store.get_value_raw(self.id())
     }
+
     pub fn value_string(&self) -> MizeResult<String> {
         let raw = self.value_raw()?;
         String::from_utf8(raw.clone())
             .mize_result_msg(format!("failed to convert raw value from item '{}' into a utf-8 string. raw value was: '{:02X?}'", self.id(), raw))
     }
+
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
         self.instance.store.get_value_data_full(self.id())
     }
+
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
         let mut old_data = self.instance.store.get_value_data_full(self.id())?;
 
@@ -61,7 +64,7 @@ impl<S: Store> Item<'_, S> {
     }
 }
 
-impl<S: Store> Display for Item<'_, S> {
+impl<'a> Display for Item<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let item_data = self.as_data_full().map_err(|_| std::fmt::Error)?;
         write!(f, "{}", item_data);

@@ -32,33 +32,33 @@ impl fmt::Display for MizeId {
     }
 }
 
-pub trait IntoMizeId<S: Store> {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId;
+pub trait IntoMizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeId;
 }
 
-impl<S: Store> IntoMizeId<S> for &str {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for &str {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         instance.id_from_string(self.to_owned())
     }
 }
 
-impl<S: Store> IntoMizeId<S> for String {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for String {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         instance.id_from_string(self)
     }
 }
-impl<S: Store> IntoMizeId<S> for &String {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for &String {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         instance.id_from_string(self.to_owned())
     }
 }
-impl<S: Store> IntoMizeId<S> for Vec<String> {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for Vec<String> {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         instance.id_from_vec_string(self)
     }
 }
-impl<S: Store> IntoMizeId<S> for &[&str] {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for &[&str] {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         let mut vec: Vec<String> = Vec::new();
         for i in self {
             vec.push((*i).to_owned())
@@ -66,8 +66,8 @@ impl<S: Store> IntoMizeId<S> for &[&str] {
         instance.id_from_vec_string(vec)
     }
 }
-impl<S: Store> IntoMizeId<S> for Vec<&str> {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for Vec<&str> {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         let mut vec: Vec<String> = Vec::new();
         for i in self {
             vec.push((*i).to_owned())
@@ -75,8 +75,8 @@ impl<S: Store> IntoMizeId<S> for Vec<&str> {
         instance.id_from_vec_string(vec)
     }
 }
-impl<S: Store> IntoMizeId<S> for MizeId {
-    fn to_mize_id(self, instance: &Instance<S>) -> MizeId {
+impl IntoMizeId for MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeId {
         self
     }
 }

@@ -7,7 +7,7 @@ use log::trace;
 use colored::Colorize;
 
 use crate::id::MizeId;
-use crate::instance::store::Store;
+use crate::instance::store::{Store, IdIter};
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::item::{Item, ItemData};
 use crate::instance::Instance;
@@ -26,18 +26,18 @@ struct MemStoreInner {
 }
 
 impl Store for MemStore {
-    fn set<T: Into<ItemData>>(&self, id: MizeId, data: T) -> MizeResult<()> {
+    fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
         let mut inner = self.inner.lock()?;
 
-        inner.map.insert(id_to_u64(id)?, data.into());
+        inner.map.insert(id_to_u64(id)?, data);
         return Ok(())
     }
-    fn get_links(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> {
+    fn get_links(&self, item: Item) -> MizeResult<Vec<MizeId>> {
         let inner = self.inner.lock()?;
 
         Ok(Vec::new())
     }
-    fn get_backlinks(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> {
+    fn get_backlinks(&self, item: Item) -> MizeResult<Vec<MizeId>> {
         let inner = self.inner.lock()?;
 
         Ok(Vec::new())
@@ -80,11 +80,36 @@ impl Store for MemStore {
 
         return Ok(ret_data);
     }
-    fn id_iter(&self) -> MizeResult<impl Iterator<Item=String> + '_> {
+    fn id_iter(&self) -> MizeResult<IdIter> {
+
+        IdIter::new(Box::new(self.to_owned()))
+    }
+
+    fn next_id(&self, prev_id_str: &str) -> MizeResult<Option<String>> {
         let inner = self.inner.lock()?;
 
-        let keys: Vec<String> = inner.map.keys().map(|v| format!("{}", v)).collect();
-        return Ok(keys.into_iter());
+        let mut id = str_to_u64(prev_id_str)?;
+
+        loop {
+
+            id += 1;
+
+            if id > inner.next_id {
+                return Ok(None);
+            }
+
+            if inner.map.contains_key(&id) {
+                return Ok(Some(format!("{}", id)));
+
+            } else {
+                // try id +1
+                continue;
+            }
+        }
+    }
+
+    fn first_id(&self) -> MizeResult<String> {
+        Ok("0".to_owned())
     }
 }
 
@@ -96,9 +121,12 @@ impl MemStore {
 }
 
 fn id_to_u64(id: MizeId) -> MizeResult<u64> {
-    id.store_part()
-        .parse()
-        .mize_result_msg(format!("Could not parse the store_part of mizeid {} into a u64 for the MemStore", id))
+    str_to_u64(id.store_part())
+}
+
+fn str_to_u64(id_str: &str) -> MizeResult<u64> {
+    id_str.parse()
+        .mize_result_msg(format!("Could not parse the store_part of mizeid {} into a u64 for the MemStore", id_str))
 }
 
 pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult<&'a [u8]> {

@@ -5,6 +5,7 @@ use sysinfo::{System, Pid, ProcessRefreshKind, RefreshKind};
 use std::io::Write;
 use ciborium::Value as CborValue;
 
+use crate::instance::store::IdIter;
 use crate::item::IntoItemData;
 use crate::memstore::MemStore;
 use crate::{core::instance::store::Store, mize_err};
@@ -57,17 +58,17 @@ impl Store for FileStore {
         return Ok(id_string);
     }
 
-    fn set<T: Into<ItemData>>(&self, id: MizeId, data: T) -> MizeResult<()> {
+    fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
         let file = OpenOptions::new().write(true).create(true).open(self.path.join("store").join(id.store_part()))?;
-        ciborium::into_writer(data.into().cbor(), file)?;
+        ciborium::into_writer(data.cbor(), file)?;
         Ok(())
     }
 
-    fn get_links(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> {
+    fn get_links(&self, item: Item) -> MizeResult<Vec<MizeId>> {
         Ok(Vec::new())
     }
 
-    fn get_backlinks(&self, item: Item<Self>) -> MizeResult<Vec<MizeId>> {
+    fn get_backlinks(&self, item: Item) -> MizeResult<Vec<MizeId>> {
         Ok(Vec::new())
     }
 
@@ -100,8 +101,14 @@ impl Store for FileStore {
 
         return Ok(ret_data);
     }
-    fn id_iter(&self) -> MizeResult<impl Iterator<Item=String> + '_> {
-        Ok(vec!["1".to_owned(), "2".to_owned()].into_iter())
+    fn id_iter(&self) -> MizeResult<IdIter> {
+        todo!()
+    }
+    fn next_id(&self, prev_id: &str) -> MizeResult<Option<String>> {
+        todo!()
+    }
+    fn first_id(&self) -> MizeResult<String> {
+        Ok("0".to_owned())
     }
 }
 

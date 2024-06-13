@@ -19,7 +19,7 @@ mod fsstore;
 //mod unix-socket;
 
 
-pub fn os_instance_init<S: Store>(instance: Instance<MemStore>) -> MizeResult<Instance<FileStore>> {
+pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     // this is the code, that runs to initialize an Instance on a system with an os present.
 
     ////// load MIZE_CONFIG_FILE as the instance, which is item 0
@@ -63,8 +63,8 @@ pub fn os_instance_init<S: Store>(instance: Instance<MemStore>) -> MizeResult<In
 
     if store_path != "" {
         let file_store = FileStore::new(store_path)?;
-        let new_instance = &mut instance.migrate_to_store(file_store)?;
-        return Ok(new_instance);
+        let new_instance = &mut instance.migrate_to_store(Box::new(file_store))?;
+        return Ok(());
     }
 
     return Ok(());
