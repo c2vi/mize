@@ -7,13 +7,13 @@ use uuid::Uuid;
 use std::fs::File;
 use colored::Colorize;
 use std::path::Path;
-use interner::shared::VecStringPool;
+use interner::shared::{VecStringPool, StringPool};
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
 use crate::instance;
 use crate::instance::store::Store;
 use crate::instance::connection::Connection;
-use crate::id::{IntoMizeId, MizeId};
+use crate::id::{IntoMizeId, MizeId, Namespace};
 use crate::instance::subscription::Subscription;
 use crate::item::{Item, ItemData};
 use crate::memstore::MemStore;
@@ -33,26 +33,23 @@ pub struct Instance {
     peers: Arc<Mutex<Vec<Box<dyn Connection>>>>,
     subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
     pub id_pool: VecStringPool,
+    pub namespace_pool: StringPool,
+    pub namespace: Namespace,
 }
 
-
-/*
-pub enum RealmId {
-    Uuid(Uuid),
-    Local(Vec<String>),
-    Tld(Vec<String>),
-}
-*/
 
 impl Instance {
     pub fn empty() -> Instance {
         let store = MemStore::new();
         let id_pool = VecStringPool::default();
+        let namespace_pool = StringPool::default();
         let peers = Arc::new(Mutex::new(Vec::new()));
         let subs = Arc::new(Mutex::new(HashMap::new()));
-        let mut instance = Instance { store: Box::new(store), peers, subs, id_pool };
+        let namespace = Namespace ( namespace_pool.get("mize.default.namespace") );
+        let mut instance = Instance { store: Box::new(store), peers, subs, id_pool, namespace_pool, namespace };
         return instance;
     }
+
     pub fn new() -> MizeResult<Instance> {
         trace!("[ {} ] Instance::new()", "CALL".yellow());
 
@@ -135,15 +132,16 @@ impl Instance {
 
     pub fn id_from_string(&self, string: String) -> MizeId {
         let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).collect();
-        return MizeId { path: self.id_pool.get(vec_string) };
+        MizeId { path: self.id_pool.get(vec_string), namespace: self.namespace.clone() }
     }
+
     pub fn id_from_vec_string(&self, vec_string: Vec<String>) -> MizeId {
-        return MizeId { path: self.id_pool.get(vec_string) };
+        MizeId { path: self.id_pool.get(vec_string), namespace: self.namespace.clone() }
     }
-//impl<T: Into<String>> From<T> for MizeId {
-    //fn from(value: T) -> Self {
-    //}
-//}
+
+    pub fn namespace_from_string(&self, ns_str: String) -> Namespace {
+        Namespace ( self.namespace_pool.get(ns_str) )
+    }
 }
 
 impl fmt::Debug for Instance {

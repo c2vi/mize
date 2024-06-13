@@ -59,7 +59,10 @@ impl Store for FileStore {
     }
 
     fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
-        let file = OpenOptions::new().write(true).create(true).open(self.path.join("store").join(id.store_part()))?;
+        let path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
+
+        let file = OpenOptions::new().write(true).create(true).open(path)?;
+
         ciborium::into_writer(data.cbor(), file)?;
         Ok(())
     }
@@ -73,7 +76,9 @@ impl Store for FileStore {
     }
 
     fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>> {
-        let file = OpenOptions::new().read(true).create(true).open(self.path.join("store").join(id.store_part()))?;
+        let path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
+
+        let file = OpenOptions::new().read(true).create(true).open(path)?;
 
         let cbor_val: CborValue = ciborium::from_reader(file)
             .mize_result_msg(format!("could not read file '{}' from FileStore", self.path.join("store").join(id.store_part()).display()))?;

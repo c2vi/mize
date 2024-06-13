@@ -1,39 +1,56 @@
 use core::fmt;
 use std::{collections::binary_heap::Iter, fmt::write, hash::Hash};
-use interner::{shared::SharedPool, Pooled, shared::SharedVecString};
+use interner::{shared::{SharedPool, SharedString, SharedVecString}, Pooled};
 use std::collections::hash_map::RandomState;
+use std::path::Path;
 
 use crate::instance::{store::Store, Instance};
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct MizeId {
     pub path: SharedVecString,
+    pub namespace: Namespace,
 }
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct Namespace ( pub SharedString );
+
+impl Namespace {
+    fn as_string(self) -> SharedString {
+        self.0
+    }
+}
+
+pub trait IntoMizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeId;
+}
+
+
+
 
 impl MizeId {
     pub fn store_part(&self) -> &str {
         self.path.iter().nth(0)
             .expect("an empty MizeId found, that should absolutely not be possible!!!!").as_str()
     }
+
     pub fn path(&self) -> SharedVecString {
         self.path.clone()
     }
-    //pub fn as_slice(&self) -> u8 {
-        //self.path
-    //}
-    //pub fn as_iter(&self) -> u8 {
-        //self.path.iter()
-    //}
+
+    pub fn namespace(&self) -> Namespace {
+        self.namespace.clone()
+    }
+
+    pub fn namespace_str(&self) -> &str {
+        &self.namespace.0
+    }
 }
 
 impl fmt::Display for MizeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.path.join("/"))
     }
-}
-
-pub trait IntoMizeId {
-    fn to_mize_id(self, instance: &Instance) -> MizeId;
 }
 
 impl IntoMizeId for &str {
