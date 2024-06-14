@@ -196,9 +196,13 @@ impl From<FromUtf8Error> for MizeError {
 }
 */
 
-impl<E> From<E> for MizeError where E: std::fmt::Display {
-    fn from(e: E) -> MizeError {
-        MizeError::new().msg(format!("From generic Rust error: {}", e))
+impl<T: Display> From<T> for MizeError {
+    #[track_caller]
+    fn from(value: T) -> Self {
+        let caller_location = std::panic::Location::caller();
+        MizeError::new()
+            .msg(format!("From {}: {}", std::any::type_name_of_val(&value), value))
+            .location(caller_location.into())
     }
 }
 
@@ -238,28 +242,6 @@ impl<T, E, S> IntoMizeResult<T, S> for Result<T, E> where E: std::fmt::Display {
         }
     }
 }
-
-/*
-impl<T> IntoMizeResult<T> for io::Result<T> {
-    #[track_caller]
-    fn mize_result(self) -> MizeResult<T> {
-        let caller_location = std::panic::Location::caller();
-
-        match self {
-            Ok(val) => MizeResult::Ok(val),
-            Err(io_err) => MizeResult::Err(MizeError::new().category("io").msg(format!("From an io::Error: {}", io_err))),
-        }
-    }
-    #[track_caller]
-    fn mize_result_msg(self, msg: dyn Into<&str>) -> MizeResult<T> {
-        let caller_location = std::panic::Location::caller();
-        match self {
-            Ok(val) => MizeResult::Ok(val),
-            Err(io_err) => MizeResult::Err(MizeError::new().category("io").msg(msg).msg(format!("From an io::Error: {}", io_err))),
-        }
-    }
-}
-*/
 
 
 fn get_error_by_code(code: u32, caller_location: &std::panic::Location) -> MizeError {
