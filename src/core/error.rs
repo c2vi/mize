@@ -145,6 +145,13 @@ impl MizeError {
         panic!();
     }
 
+    pub fn location(mut self, location: MizeCodeLocation) -> MizeError {
+
+        self.code_location = Some(location);
+
+        self
+    }
+
 }
 
 /*

@@ -59,11 +59,11 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     };
 
     ////// if a config.store is set, upgrade to the filestore there
-    let instance_path = instance.get("0/conifg/instance_path")?.value_string()?;
+    let store_path = instance.get("0/config/store_path")?.value_string()?;
 
-    if instance_path != "" {
-        let file_store = FileStore::new(instance_path)?;
-        let new_instance = &mut instance.migrate_to_store(Box::new(file_store))?;
+    if store_path != "" {
+        let file_store = FileStore::new(store_path.as_str())?;
+        instance.migrate_to_store(Box::new(file_store))?;
     }
 
     Ok(())

@@ -86,6 +86,7 @@ impl Store for MemStore {
     }
 
     fn next_id(&self, prev_id_str: &str) -> MizeResult<Option<String>> {
+        println!("next_id: prev_id_str: {}", prev_id_str);
         let inner = self.inner.lock()?;
 
         let mut id = str_to_u64(prev_id_str)?;
@@ -99,6 +100,7 @@ impl Store for MemStore {
             }
 
             if inner.map.contains_key(&id) {
+                println!("returning: {}", id);
                 return Ok(Some(format!("{}", id)));
 
             } else {
@@ -139,7 +141,20 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
         Some(val) => val,
         None => {
             // our base case
-            return Err(MizeError::new().msg("path is empty"));
+            let ret_val = match value {
+                CborValue::Bytes(vec) => {
+                    trace!("[ {} ] ret value: {:?}", "RET".yellow(), &vec[..]);
+                    return Ok(&vec[..]);
+                },
+                CborValue::Text(string) => { 
+                    trace!("[ {} ] ret value: {:?}", "RET".yellow(), string.as_bytes());
+                    return Ok(string.as_bytes());
+                },
+                other => {
+                    return Err(MizeError::new()
+                        .msg("path is empty and the value is neither Bytes nor Text"));
+                },
+            };
         }, 
     };
     trace!("hoooooooo: {:?}", path_el);
@@ -181,7 +196,7 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
             trace!("[ {} ] ret value: {:?}", "RET".yellow(), ret_value);
             return ret_value;
         },
-        _ => Err(MizeError::new().msg("get_raw_from_cbor: value is not Bytes, Text or Map")),
+        _ => Err(MizeError::new().msg("get_raw_from_cbor: value is not a map, text or bytes")),
     }
 }
 

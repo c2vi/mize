@@ -2,3 +2,4 @@
 [config]
 namespace = "test.c2vi.dev"
 test = "hello from test item"
+store_path = "/home/me/.mize"

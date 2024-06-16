@@ -19,6 +19,10 @@ pub fn get(sub_matches: &ArgMatches) -> MizeResult<()> {
     let item = instance.get(id)?;
 
     let recurse_count = sub_matches.get_count("recurse");
+
+    println!("{}", item.as_data_full()?);
+    return Ok(());
+
     if recurse_count > 0 {
         println!("{}", item.id());
         println!("{}", item.as_data_full()?);

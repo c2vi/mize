@@ -66,8 +66,8 @@ impl Item<'_> {
 
 impl<'a> Display for Item<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let item_data = self.as_data_full().map_err(|_| std::fmt::Error)?;
-        write!(f, "{}", item_data);
+        //let item_data = self.as_data_full().map_err(|_| std::fmt::Error)?;
+        write!(f, "Item with id: {}", self.id());
         return Ok(());
     }
 }
@@ -120,6 +120,9 @@ impl ItemData {
 
 pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {
     let mut path_iter = path.clone().into_iter();
+    //println!("data: {:?}", data);
+    //println!("path: {:?}", path);
+
     let path_el = match path_iter.nth(0) {
         Some(val) => val,
         None => return Ok(data), // our base case
@@ -129,8 +132,11 @@ pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&Cb
     match data {
         CborValue::Map(ref map) => {
             for (key, val) in map {
+                //println!("key: {:?}", key);
+                //println!("path_el: {}", path_el);
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
+                        println!("setting sub_data to: {:?}", val);
                         sub_data = val;
                     }
                 }

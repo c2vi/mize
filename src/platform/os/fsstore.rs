@@ -20,22 +20,27 @@ pub struct FileStore {
 }
 
 impl FileStore {
-    pub fn new(path: String) -> MizeResult<FileStore> {
+    pub fn new(path_str: &str) -> MizeResult<FileStore> {
+
+        let path = Path::new(path_str);
 
         // create that path if it does not exist
         fs::create_dir_all(Path::new(&path).join("store"))?;
 
         // check for valid pid file
-        if let Some(pid) = valid_pid_file(&path)? {
+        if let Some(pid) = valid_pid_file(path)? {
             // store already opened
-            return Err(mize_err!("MizeStore at path {} is already opened by process with pid {}", &path, pid));
+            return Err(mize_err!("MizeStore at path {} is already opened by process with pid {}", path.display(), pid));
 
         } else {
             // write our own pid file
             let pid = std::process::id();
-            let mut file = OpenOptions::new().write(true).create(true).open(&path)?;
+            let mut file = OpenOptions::new().write(true).create(true).open(path.join("pid"))?;
             write!(file, "{}", pid)?;
         }
+
+        // init the store
+        fs::write(path.join("next_id"), "0");
 
         Ok(FileStore { path: Path::new(&path).to_owned() })
     }
@@ -59,7 +64,10 @@ impl Store for FileStore {
     }
 
     fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
+        println!("setting: {:?}", id);
         let path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
+        println!("path: {:?}", &path);
+        fs::create_dir_all(self.path.join("store").join(id.namespace_str()))?;
 
         let file = OpenOptions::new().write(true).create(true).open(path)?;
 
@@ -92,7 +100,9 @@ impl Store for FileStore {
     }
 
     fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData> {
-        let file = OpenOptions::new().read(true).create(true).open(self.path.join("store").join(id.store_part()))?;
+        let file_path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
+        println!("file_path: {:?}", file_path.display());
+        let file = OpenOptions::new().read(true).open(file_path)?;
 
         let cbor_value: CborValue = ciborium::from_reader(file)
             .mize_result_msg(format!("could not read file '{}' from FileStore", self.path.join("store").join(id.store_part()).display()))?;
@@ -117,9 +127,9 @@ impl Store for FileStore {
     }
 }
 
-fn valid_pid_file(path: &String) -> MizeResult<Option<u32>> {
+fn valid_pid_file(path: &Path) -> MizeResult<Option<u32>> {
 
-    let pid_file_path = Path::new(path).join("pid");
+    let pid_file_path = path.join("pid");
 
     // if the pid file does not exist, there is no pid...
     if !pid_file_path.exists() {

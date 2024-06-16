@@ -57,7 +57,7 @@ impl Instance {
 
         instance.init();
 
-        debug!("instance inited with conifg: {}", instance.get("0/config")?.as_data_full()?);
+        debug!("instance inited with config: {}", instance.get("0/config")?.as_data_full()?);
 
         return Ok(instance);
     }
@@ -85,14 +85,17 @@ impl Instance {
         debug!("overwriting instance config again with the one passed to Instance::with_config()");
         instance.set("0", config);
 
-        //debug!("instance inited with conifg: {}", instance.get("0/config")?);
-        debug!("instance inited with conifg: no");
+        debug!("instance inited with conifg: {}", instance.get("0/config")?);
 
         Ok(instance)
     }
 
     pub fn migrate_to_store(&mut self, new_store: Box<dyn Store>) -> MizeResult<()> {
+        println!("MIGRATING");
         let old_store = &self.store;
+
+        let inst_data = self.store.get_value_data_full(self.id_from_string("0".to_owned()))?;
+        new_store.set(self.id_from_string("0".to_owned()), inst_data.to_owned())?;
 
         for id in old_store.id_iter()? {
             let data = self.store.get_value_data_full(self.id_from_string(id?))?;
