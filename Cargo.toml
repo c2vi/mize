@@ -17,7 +17,8 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
-os-target = [ "clap", "home", "env_logger", "daemonize", "nix", "toml", "serde_json", "sysinfo", "ciborium/default"]
+os-target = [ "clap", "home", "daemonize", "nix", "toml", "serde_json", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter"]
+async = ["tokio/net", "tokio", "tokio/rt-multi-thread"]
 wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 
 
@@ -25,11 +26,10 @@ wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 # core dependencies
 colored = "2.0.0"
 uuid = "1.3.0"
-log = "0.4.20"
-tokio = { version = "1.21.0", features = ["sync"] }
 ciborium = { version = "0.2.2", default-features = false }
 serde = "1.0.203"
 interner = { git = "https://github.com/c2vi/interner" }
+tracing = "0.1.40"
 
 # wasm dependencies
 wasm-bindgen = { version = "0.2.84", optional = true }
@@ -39,12 +39,13 @@ wasm-bindgen-cli = { version = "0.2.92", optional = true }
 # os dependencies
 clap = { version = "4.4.11", features = ["cargo"], optional = true }
 home = { version = "0.5.9", optional = true }
-env_logger = { version = "0.10.1", optional = true }
 daemonize = { version = "0.5.0", optional = true }
 nix = { version = "0.27.1", features = ["signal"], optional = true }
 toml = { version = "0.8.13", features = ["parse"], optional = true }
 serde_json = { version = "1.0.117", optional = true }
 sysinfo = { version = "0.30.12", optional = true }
+tracing-subscriber = { version = "0.3.18", optional = true }
+tokio = { version = "1.21.0", features = ["sync"], optional = true }
 
 # bare dependencies
 
@@ -52,6 +53,8 @@ sysinfo = { version = "0.30.12", optional = true }
 axum = { version = "0.6.1", features = ["ws", "headers"], optional = true }
 axum-extra = { version = "0.4.2", features = ["spa"], optional = true }
 axum-macros = { version = "0.3.0", optional = true }
+crossbeam = "0.8.4"
+dyn-clone = "1.0.17"
 
 #tokio-stream = { version = "0.1.9", optional = true }
 #derive_more = "0.99.17"

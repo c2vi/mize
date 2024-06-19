@@ -1,0 +1,94 @@
+use std::path::{Path, PathBuf};
+use tokio::net::UnixListener as TokioUnixListener;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::Interest;
+use crossbeam::channel::{Receiver, Sender, unbounded};
+
+use crate::instance::peer::{PeerListener, Peer};
+use crate::instance::{self, Instance};
+use crate::error::{MizeError, MizeResult, IntoMizeResult};
+use crate::proto::MizeMessage;
+
+pub struct UnixListener {
+    sock_path: PathBuf,
+}
+
+impl UnixListener {
+    pub fn new(store_path: PathBuf) -> MizeResult<UnixListener> {
+        Ok(UnixListener { sock_path: store_path.join("sock").to_owned() })
+    }
+}
+
+impl PeerListener for UnixListener {
+    fn listen(self, mut instance: Instance) -> MizeResult<()> {
+        instance.spawn_async("unix listen async", unix_listen(self, instance.clone()));
+        Ok(())
+    }
+}
+
+
+async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResult<()> {
+    let listener = TokioUnixListener::bind(&listener.sock_path)
+        .mize_result_msg(format!("Could not bind to unix socket at '{}'", listener.sock_path.display()))?;
+
+    loop {
+        let (unix_sock, addr) = listener.accept().await
+            .mize_result_msg("Error while accepting Unix sock connection")?;
+
+        let (recieve_tx, recieve_rx) = unbounded::<MizeMessage>();
+        let (send_tx, send_rx) = unbounded::<MizeMessage>();
+        let (unix_read, unix_write) = unix_sock.into_split();
+
+        let peer = Peer::new(recieve_rx, send_tx);
+
+        instance.add_peer(peer);
+        instance.spawn_async("incomming", unix_incomming(unix_read, recieve_tx));
+        instance.spawn_async("outgoing", unix_outgoing(unix_write, send_rx));
+    }
+}
+
+
+async fn unix_outgoing(unix_write: OwnedWriteHalf, send_rx: Receiver<MizeMessage>) -> MizeResult<()> {
+    loop {
+        let ready = unix_write.ready(Interest::WRITABLE).await.mize_result_msg("hi")?;
+        if ready.is_writable() {
+            // Try to write data, this may still fail with `WouldBlock`
+            // if the readiness event is a false positive.
+            match unix_write.try_write(b"hello world") {
+                Ok(n) => {
+                    println!("wrote {} bytes to unix sock", n);
+                }
+                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+}
+
+async fn unix_incomming(unix_read: OwnedReadHalf, recieve_tx: Sender<MizeMessage>) -> MizeResult<()> {
+    loop {
+        let ready = unix_read.ready(Interest::READABLE).await.mize_result_msg("unix_read_half.ready() failed")?;
+
+        if ready.is_readable() {
+            let mut data = vec![0; 1024];
+            // Try to read data, this may still fail with `WouldBlock`
+            // if the readiness event is a false positive.
+            match unix_read.try_read(&mut data) {
+                Ok(n) => {
+                    println!("read {} bytes from unix sock", n);
+                }
+                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+
+        }
+    }
+}

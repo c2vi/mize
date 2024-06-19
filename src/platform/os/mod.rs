@@ -2,8 +2,9 @@ use ciborium::Value as CborValue;
 use serde::Deserialize;
 use std::env::VarError;
 use std::fs;
-use log::{debug, error, warn, trace};
+use tracing::{debug, error, warn, trace};
 use clap::ArgMatches;
+use std::path::Path;
 
 use crate::id::MizeId;
 use crate::instance::store::Store;
@@ -11,12 +12,13 @@ use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::item::{ItemData, IntoItemData};
 use crate::memstore::MemStore;
+use crate::platform::os::unix_socket::UnixListener;
 
 use self::fsstore::FileStore;
 
 mod fsstore;
+mod unix_socket;
 //mod web;
-//mod unix-socket;
 
 
 pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
@@ -64,6 +66,9 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     if store_path != "" {
         let file_store = FileStore::new(store_path.as_str())?;
         instance.migrate_to_store(Box::new(file_store))?;
+
+        let path = Path::new(&store_path).to_owned();
+        instance.add_listener(UnixListener::new(path)?)?;
     }
 
     Ok(())

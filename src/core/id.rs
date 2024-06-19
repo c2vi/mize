@@ -5,6 +5,7 @@ use std::collections::hash_map::RandomState;
 use std::path::Path;
 
 use crate::instance::{store::Store, Instance};
+use crate::error::{MizeResult, MizeError, MizeResultTrait};
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct MizeId {
@@ -22,7 +23,7 @@ impl Namespace {
 }
 
 pub trait IntoMizeId {
-    fn to_mize_id(self, instance: &Instance) -> MizeId;
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId>;
 }
 
 
@@ -54,28 +55,28 @@ impl fmt::Display for MizeId {
 }
 
 impl IntoMizeId for &str {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         instance.id_from_string(self.to_owned())
     }
 }
 
 impl IntoMizeId for String {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         instance.id_from_string(self)
     }
 }
 impl IntoMizeId for &String {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         instance.id_from_string(self.to_owned())
     }
 }
 impl IntoMizeId for Vec<String> {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         instance.id_from_vec_string(self)
     }
 }
 impl IntoMizeId for &[&str] {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         let mut vec: Vec<String> = Vec::new();
         for i in self {
             vec.push((*i).to_owned())
@@ -84,7 +85,7 @@ impl IntoMizeId for &[&str] {
     }
 }
 impl IntoMizeId for Vec<&str> {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         let mut vec: Vec<String> = Vec::new();
         for i in self {
             vec.push((*i).to_owned())
@@ -93,8 +94,8 @@ impl IntoMizeId for Vec<&str> {
     }
 }
 impl IntoMizeId for MizeId {
-    fn to_mize_id(self, instance: &Instance) -> MizeId {
-        self
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
+        Ok(self)
     }
 }
 

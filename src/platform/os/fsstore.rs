@@ -12,9 +12,10 @@ use crate::{core::instance::store::Store, mize_err};
 use crate::error::{IntoMizeResult, MizeResult, MizeError};
 use crate::core::item::{ItemData, Item};
 use crate::core::id::MizeId;
-use crate::core::memstore::get_raw_from_cbor;
+use crate::item::get_raw_from_cbor;
 use crate::instance::Instance;
 
+#[derive(Clone)]
 pub struct FileStore {
     path: PathBuf,
 }

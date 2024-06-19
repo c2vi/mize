@@ -1,4 +1,4 @@
-use log::{trace, debug, info, warn, error};
+use tracing::{debug, error, info, instrument, trace, warn};
 use serde::Serialize;
 use core::fmt;
 use std::{i128, string};
@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use std::rc::Rc;
 use colored::Colorize;
 use std::io;
+use tracing::{span, Level};
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::instance::Instance;
@@ -253,6 +254,74 @@ pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
         (merge_into, other) => {
             *merge_into = other.to_owned();
         }
+    }
+}
+
+#[instrument]
+pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult<&'a [u8]> {
+    trace!("[ {} ] value: {:?}", "ARG".yellow(), value);
+    trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
+
+    let mut path_iter = path.clone().into_iter();
+    let path_el = match path_iter.nth(0) {
+        Some(val) => val,
+        None => {
+            // our base case
+            let ret_val = match value {
+                CborValue::Bytes(vec) => {
+                    trace!("[ {} ] ret value: {:?}", "RET".yellow(), &vec[..]);
+                    return Ok(&vec[..]);
+                },
+                CborValue::Text(string) => { 
+                    trace!("[ {} ] ret value: {:?}", "RET".yellow(), string.as_bytes());
+                    return Ok(string.as_bytes());
+                },
+                other => {
+                    return Err(MizeError::new()
+                        .msg("path is empty and the value is neither Bytes nor Text"));
+                },
+            };
+        }, 
+    };
+    
+    match value {
+        CborValue::Bytes(vec) => {
+            trace!("[ {} ] ret value: {:?}", "RET".yellow(), &vec[..]);
+            return Ok(&vec[..]);
+        },
+        CborValue::Text(string) => { 
+            trace!("[ {} ] ret value: {:?}", "RET".yellow(), string.as_bytes());
+            return Ok(string.as_bytes());
+        },
+        CborValue::Map(map) => {
+            let mut inner_val: &CborValue = &CborValue::Null;
+            let mut inner_val_found = false;
+
+            // find the inner_val at path
+            for (key, val) in map.into_iter() {
+                if let CborValue::Text(key_text) = key {
+                    if key_text == path_el {
+                        inner_val = val;
+                        inner_val_found = true;
+                    }
+                }
+            }
+            
+            // if there is no value at that path
+            if inner_val_found == false {
+                return Err(MizeError::new()
+                    // jesus christ, this is a pfusch...
+                    .msg(format!("get_raw_from_cbor: Path '{}' not Found", path.clone().into_iter().map(|v| v.to_owned()).collect::<Vec<String>>().join("/"))))
+            }
+
+            //path_iter.next();
+            let inner_path = path_iter.collect();
+            let ret_value = get_raw_from_cbor(inner_val, inner_path);
+            trace!("[ {} ] ret value: {:?}", "RET".yellow(), ret_value);
+            return ret_value;
+        },
+        _ => Err(MizeError::new()
+            .msg(format!("get_raw_from_cbor: value is not a map, text or bytes ... value: {:?}", value))),
     }
 }
 

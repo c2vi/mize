@@ -5,7 +5,7 @@ use std::fmt::format;
 use std::string::FromUtf8Error;
 use std::io;
 use colored::Colorize;
-use log::{trace, debug, info, warn, error};
+use tracing::{trace, debug, info, warn, error};
 
 #[macro_export]
 macro_rules! mize_err {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use home::home_dir;
 use std::fs::File;
-use log::{trace, debug, info, warn, error};
+use tracing::{trace, debug, info, warn, error};
 use nix::sys::signal::{self, Signal};
 
 use mize::error::{MizeResultTrait, IntoMizeResult, MizeError, MizeResult};
