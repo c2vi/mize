@@ -8,17 +8,16 @@ use nix::sys::signal::{self, Signal};
 
 use mize::error::{MizeResultTrait, IntoMizeResult, MizeError, MizeResult};
 use mize::instance::Instance;
+use mize::platform::os::config_from_cli_args;
 
 
 pub fn run(sub_matches: &ArgMatches) -> MizeResult<()> {
 
-    // TODO NEXT!!!
-    // - --config arg
-    // - --folder
-    // - to set a location, where there will be a /store and a /sock
-    // - listen for connections on that sock
-    // - msg handeling
-    let instance = Instance::with_config(todo!());
+    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+
+    instance.wait();
+
+
 
     /*
     let instance_path = match sub_matches.get_one::<String>("store") {

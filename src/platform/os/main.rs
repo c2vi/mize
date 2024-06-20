@@ -55,7 +55,7 @@ fn main() {
     // match command
     let result = match cli_matches.subcommand() {
         // mi daemon
-        Some(("daemon", sub_matches)) => cli::run(sub_matches),
+        Some(("run", sub_matches)) => cli::run(sub_matches),
 
         // mi serve
         Some(("serve", sub_matches)) => cli::stop(sub_matches),

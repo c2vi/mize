@@ -1,6 +1,7 @@
 use core::fmt;
 use std::collections::HashMap;
 use std::fs::create_dir;
+use std::thread::JoinHandle;
 use std::{thread, vec};
 use crossbeam::channel;
 use std::sync::{Arc, Mutex};
@@ -51,7 +52,7 @@ pub struct Instance {
     context: Vec<MizeId>,
     threads: Vec<String>,
     #[cfg(feature = "async")]
-    runtime: Arc<Mutex<Runtime>>,
+    pub runtime: Arc<Mutex<Runtime>>,
 }
 
 pub struct InstanceRef {
@@ -217,6 +218,12 @@ impl Instance {
         self.threads.push(name.to_owned());
         let runtime_inner = self.runtime.lock().unwrap();
         runtime_inner.spawn(func);
+    }
+
+    pub fn wait(&self) {
+        loop {
+            thread::sleep_ms(10000000)
+        }
     }
 }
 
