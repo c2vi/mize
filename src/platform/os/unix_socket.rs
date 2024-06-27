@@ -2,11 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tokio::net::UnixListener as TokioUnixListener;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::io::{Interest, AsyncReadExt};
+use tokio::io::{Interest, AsyncReadExt, AsyncWriteExt};
 use crossbeam::channel::{Receiver, Sender, unbounded};
 use ciborium::Value as CborValue;
+use tracing::warn;
 
-use crate::instance::peer::{PeerListener, Peer};
+use crate::instance::connection::{ConnListener, Connection};
 use crate::instance::{self, Instance};
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::proto::MizeMessage;
@@ -21,7 +22,7 @@ impl UnixListener {
     }
 }
 
-impl PeerListener for UnixListener {
+impl ConnListener for UnixListener {
     fn listen(self, mut instance: Instance) -> MizeResult<()> {
         instance.spawn_async("unix listen async", unix_listen(self, instance.clone()));
         Ok(())
@@ -30,7 +31,9 @@ impl PeerListener for UnixListener {
 
 
 async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResult<()> {
+    // remove the file at sock_path if it already exists
     fs::remove_file(&listener.sock_path)?;
+
     let listener = TokioUnixListener::bind(&listener.sock_path)
         .mize_result_msg(format!("Could not bind to unix socket at '{}'", listener.sock_path.display()))?;
 
@@ -43,126 +46,87 @@ async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResu
         let (unix_read, unix_write) = unix_sock.into_split();
 
 
-        let peer = Peer::new(recieve_rx, send_tx);
-
-        instance.add_peer(peer);
+        let conn_id = instance.new_connection(recieve_rx, send_tx)?;
         let cloned_instance = instance.clone();
-        instance.spawn("incomming", || unix_incomming(unix_read, recieve_tx, cloned_instance));
-        instance.spawn_async("outgoing", unix_outgoing(unix_write, send_rx));
+        instance.spawn("incomming", move || {
+            let result = unix_incomming(unix_read, recieve_tx, cloned_instance, conn_id);
+            // if unix incomming fails, close the connection
+            if let Err(err) = result {
+                warn!("Connection closing")
+            }
+            Ok(())
+        });
+
+        let outgoing_cloned_instance = instance.clone();
+        instance.spawn("outgoing", move || {
+            let result = unix_outgoing(unix_write, send_rx, outgoing_cloned_instance, conn_id);
+            // if writing fails, close this connection
+            if let Err(err) = result {
+                warn!("Connection closing")
+            }
+            Ok(())
+        });
     }
 }
 
 
-async fn unix_outgoing(unix_write: OwnedWriteHalf, send_rx: Receiver<MizeMessage>) -> MizeResult<()> {
-    return Ok(());
-    loop {
-        let ready = unix_write.ready(Interest::WRITABLE).await.mize_result_msg("hi")?;
-        if ready.is_writable() {
-            // Try to write data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            match unix_write.try_write(b"hello world") {
-                Ok(n) => {
-                    println!("wrote {} bytes to unix sock", n);
-                }
-                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
+fn unix_outgoing(mut unix_write: OwnedWriteHalf, send_rx: Receiver<MizeMessage>, mut instance: Instance, conn_id: u64) -> MizeResult<()> {
+    for msg in send_rx {
+        let adapter = MyCiboriumWriter { inner: &mut unix_write, instance: &mut instance };
+        let value = msg.value();
+        ciborium::into_writer(&value, adapter)?
     }
     Ok(())
 }
 
-struct MyAdapter<'a> {
-    inner: &'a mut OwnedReadHalf,
-    instance: &'a mut Instance,
-}
-
-impl<'a> ciborium_io::Read for MyAdapter<'a> {
-    type Error = MizeError;
-    fn read_exact(&mut self, data: &mut [u8]) -> Result<(), Self::Error> {
-        let runtime = self.instance.runtime.lock()?;
-        let num_read = runtime.block_on(self.inner.read_exact(data))?;
-        println!("read {} bytes", num_read);
-        Ok(())
-    }
-}
-
-fn unix_incomming(mut unix_read: OwnedReadHalf, recieve_tx: Sender<MizeMessage>, mut instance: Instance) -> MizeResult<()> {
+fn unix_incomming(mut unix_read: OwnedReadHalf, recieve_tx: Sender<MizeMessage>, mut instance: Instance, conn_id: u64) -> MizeResult<()> {
     loop {
-        let adapter = MyAdapter { inner: &mut unix_read, instance: &mut instance };
+        let adapter = MyCiboriumReader { inner: &mut unix_read, instance: &mut instance };
         let value: CborValue = ciborium::from_reader(adapter)?;
         if let CborValue::Integer(_) = value {
             break;
         }
-        println!("value: {:?}", value);
+        let msg = MizeMessage::new(value, conn_id);
+        recieve_tx.send(msg)?;
     }
     Ok(())
 }
 
-/*
 
+struct MyCiboriumWriter<'a> {
+    inner: &'a mut OwnedWriteHalf,
+    instance: &'a mut Instance,
+}
 
-    let mut buf: Vec<u8> = vec![2,2,2];
-
-    let mut count: usize = 0;
-
-    loop {
-        let num_bytes = unix_read.read(&mut buf[..]).await?;
-        let string = String::from_utf8(buf.clone())?;
-        println!("read num: {}", num_bytes);
-        println!("incoming: {}", string);
-        if num_bytes == 0 {
-            println!("zerooooooooooooooooooo");
-            break
-        }
-        count += 1;
-        if count > 20 {
-            break
-        }
+impl<'a> ciborium_io::Write for MyCiboriumWriter<'a> {
+    type Error = MizeError;
+    fn write_all(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        let runtime = self.instance.runtime.lock()?;
+        let num_read = runtime.block_on(self.inner.write_all(data))?;
+        Ok(())
     }
-    println!("end of loop");
-
-    return Ok(());
-    let mut count: usize = 0;
-    loop {
-        let num_bytes = unix_read.read(&mut buf[..]).await?;
-        let string = String::from_utf8(buf.clone())?;
-        println!("read num: {}", num_bytes);
-        println!("incoming: {}", string);
-        //if num_bytes == 0 {
-            //break
-        //}
-        count += 1;
-        if count > 20 {
-            break
-        }
-    }
-    return Ok(());
-
-    loop {
-        let ready = unix_read.ready(Interest::READABLE).await.mize_result_msg("unix_read_half.ready() failed")?;
-
-        if ready.is_readable() {
-            let mut data = vec![0; 1024];
-            // Try to read data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            match unix_read.try_read(&mut data) {
-                Ok(n) => {
-                    println!("read {} bytes from unix sock", n);
-                }
-                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-
-        }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
-// */
+
+struct MyCiboriumReader<'a> {
+    inner: &'a mut OwnedReadHalf,
+    instance: &'a mut Instance,
+}
+
+impl<'a> ciborium_io::Read for MyCiboriumReader<'a> {
+    type Error = MizeError;
+    fn read_exact(&mut self, data: &mut [u8]) -> Result<(), Self::Error> {
+        let runtime = self.instance.runtime.lock()?;
+        let num_read = runtime.block_on(self.inner.read_exact(data))?;
+
+        // if we read 0 bytes, that means the reader stream closed and we should terminate the
+        // connection
+        if num_read == 0 {
+            return Err(MizeError::new().msg("ReceiverStream closed"));
+        }
+        Ok(())
+    }
+}
+

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::create_dir;
 use std::thread::JoinHandle;
 use std::{thread, vec};
-use crossbeam::channel;
+use crossbeam::channel::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use tracing::{trace, debug, info, warn, error};
 use uuid::Uuid;
@@ -16,23 +16,25 @@ use interner::shared::{VecStringPool, StringPool};
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
 use crate::instance::store::Store;
 use crate::instance::updater::updater_thread;
-use crate::instance::peer::Peer;
 use crate::id::{IntoMizeId, MizeId, Namespace};
 use crate::instance::subscription::Subscription;
 use crate::item::{Item, ItemData};
 use crate::memstore::MemStore;
 use crate::instance::updater::Operation;
+use crate::mize_err;
+use crate::proto::MizeMessage;
 
-use self::peer::PeerListener;
+use self::connection::{ConnListener, Connection};
 
 #[cfg(feature = "async")]
 use tokio::runtime::Runtime;
 use core::future::Future;
 
-pub mod peer;
+pub mod connection;
 pub mod store;
 pub mod subscription;
 pub mod updater;
+pub mod msg_thread;
 
 static MSG_CHANNEL_SIZE: usize = 200;
 
@@ -43,7 +45,8 @@ pub struct Instance {
     // would mean replication logic and such things is handeled by the instance
     // i think it would be better thogh to then implement a ReplicatedStore
     pub store: Box<dyn Store>,
-    peers: Arc<Mutex<Vec<Peer>>>,
+    connections: Arc<Mutex<Vec<Connection>>>,
+    next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
@@ -69,18 +72,19 @@ impl Instance {
         let store = MemStore::new();
         let id_pool = Arc::new(Mutex::new(VecStringPool::default()));
         let namespace_pool_raw = StringPool::default();
-        let peers = Arc::new(Mutex::new(Vec::new()));
+        let connections = Arc::new(Mutex::new(Vec::new()));
         let subs = Arc::new(Mutex::new(HashMap::new()));
         let namespace = Namespace ( namespace_pool_raw.get("mize.default.namespace") );
         let (op_tx, op_rx) = channel::unbounded();
 
         let mut instance = Instance { 
             store: Box::new(store), 
-            peers, subs, id_pool,
+            connections, subs, id_pool,
             namespace, op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
             context: vec![],
             threads: vec![],
+            next_con_id: Arc::new(Mutex::new(1)),
 
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
@@ -89,6 +93,11 @@ impl Instance {
         let instance_clone = instance.clone();
         let closure = move || updater_thread(op_rx, instance_clone);
         instance.spawn("updater_thread", closure)?;
+
+        // will probably move the msg stuff into it's own thread
+        //let msg_instance_clone = instance.clone();
+        //let msg_closure = move || msg_thread(op_rx, instance_clone);
+        //instance.spawn("msg_thread", closure)?;
 
 
         return Ok(instance);
@@ -195,16 +204,32 @@ impl Instance {
         Ok(namespace)
     }
 
-    pub fn add_listener<T: PeerListener +'static>(&mut self, listener: T) -> MizeResult<()> {
+    pub fn add_listener<T: ConnListener +'static>(&mut self, listener: T) -> MizeResult<()> {
         let mut instance_clone = self.clone();
         self.spawn("some_listener", move || listener.listen(instance_clone));
         Ok(())
     }
 
-    pub fn add_peer(&mut self, peer: Peer) -> MizeResult<()> {
-        let mut peer_inner = self.peers.lock()?;
-        peer_inner.push(peer);
-        Ok(())
+    pub fn new_connection(&mut self, rx: Receiver<MizeMessage>, tx: Sender<MizeMessage>) -> MizeResult<u64> {
+        let mut conn_inner = self.connections.lock()?;
+        let mut next_con_id = self.next_con_id.lock()?;
+
+        let connection = Connection { id: next_con_id.to_owned(), rx, tx};
+        conn_inner.push(connection);
+        *next_con_id += 1;
+        Ok(next_con_id.to_owned())
+    }
+
+    pub fn get_connection(&mut self, conn_id: u64) -> MizeResult<Connection> {
+        let mut conn_inner = self.connections.lock()?;
+
+        for connection in conn_inner.iter() {
+            if connection.id == conn_id {
+                return Ok(connection.clone());
+            }
+        }
+
+        return Err(mize_err!("Connection with id {} not known to instance", conn_id));
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {

@@ -6,18 +6,20 @@ use crate::error::{MizeError, MizeResult, IntoMizeResult};
 
 use super::Instance;
 
-pub struct Peer {
-    rx: Receiver<MizeMessage>,
-    tx: Sender<MizeMessage>,
+#[derive(Clone)]
+pub struct Connection {
+    pub rx: Receiver<MizeMessage>,
+    pub tx: Sender<MizeMessage>,
+    pub id: u64,
 }
 
-pub trait PeerListener : Send + Sync {
+pub trait ConnListener : Send + Sync {
     fn listen(self, instance: Instance) -> MizeResult<()>;
 }
 
-impl Peer {
-    pub fn new(rx: Receiver<MizeMessage>, tx: Sender<MizeMessage>) -> Peer {
-        Peer { rx , tx }
+impl Connection {
+    pub fn send(&mut self, msg: MizeMessage) -> MizeResult<()> {
+        Ok(self.tx.send(msg)?)
     }
 }
 
