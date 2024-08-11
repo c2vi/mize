@@ -15,10 +15,11 @@ use crate::instance::Instance;
 use crate::instance::store::Store;
 use crate::id::MizeId;
 use ciborium::Value as CborValue;
+use crate::instance::connection::value_raw_con_by_id;
 
 
 // a item always has to do with a Instance, which takes care of how it is updated
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Item<'a> {
     id: MizeId,
     pub instance: &'a Instance
@@ -39,6 +40,18 @@ impl Item<'_> {
     }
 
     pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
+        let id = self.id();
+
+        // some paths like inst/con_by_id/x/ are not stored in the store, but gotten from the instance
+        // itself (the data for that lifes in memory in the instance struct)
+        // so here we set handlers for certain paths
+        if id.store_part() == "inst" {
+            match id.nth_part(1)? {
+                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
+                _ => {},
+            }
+        }
+
         // this will call from the instance which gets the value from the store
         self.instance.store.get_value_raw(self.id())
     }

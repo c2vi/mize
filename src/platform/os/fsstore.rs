@@ -45,6 +45,10 @@ impl FileStore {
 
         Ok(FileStore { path: Path::new(&path).to_owned() })
     }
+
+    pub fn store_is_opened(store_path: String) -> MizeResult<bool> {
+        Ok(valid_pid_file(Path::new(&store_path))?.is_some())
+    }
 }
 
 impl Store for FileStore {

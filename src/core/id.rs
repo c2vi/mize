@@ -4,7 +4,7 @@ use interner::{shared::{SharedPool, SharedString, SharedVecString}, Pooled};
 use std::collections::hash_map::RandomState;
 use std::path::Path;
 
-use crate::instance::{store::Store, Instance};
+use crate::{instance::{store::Store, Instance}, mize_err};
 use crate::error::{MizeResult, MizeError, MizeResultTrait};
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -33,6 +33,13 @@ impl MizeId {
     pub fn store_part(&self) -> &str {
         self.path.iter().nth(0)
             .expect("an empty MizeId found, that should absolutely not be possible!!!!").as_str()
+    }
+
+    pub fn nth_part(&self, n: usize) -> MizeResult<&str> {
+        match self.path.iter().nth(n) {
+            Some(val) => Ok(val.as_str()),
+            None => Err(mize_err!("id does not have {} parts", n)),
+        }
     }
 
     pub fn path(&self) -> SharedVecString {
@@ -73,6 +80,12 @@ impl IntoMizeId for &String {
 impl IntoMizeId for Vec<String> {
     fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
         instance.id_from_vec_string(self)
+    }
+}
+impl IntoMizeId for Vec<&String> {
+    fn to_mize_id(self, instance: &Instance) -> MizeResult<MizeId> {
+        let owned = self.into_iter().map(|s| s.to_owned()).collect::<Vec<String>>();
+        instance.id_from_vec_string(owned)
     }
 }
 impl IntoMizeId for &[&str] {

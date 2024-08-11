@@ -23,9 +23,20 @@ impl MizeMessage {
         MizeMessage { value, conn_id }
     }
 
-    pub fn new_give(id: MizeId, data: ItemData, conn_id: u64) -> MizeMessage {
-        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_GIVE.into()));
+    pub fn new_get(id: MizeId, conn_id: u64) -> MizeMessage {
         let id_path = id.path().into_iter().map(|string| CborValue::Text(string.to_owned())).collect();
+
+        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_GET.into()));
+        let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
+        let value = CborValue::Map(vec![cmd, id]);
+
+        MizeMessage::new(value, conn_id)
+    }
+
+    pub fn new_give(id: MizeId, data: ItemData, conn_id: u64) -> MizeMessage {
+        let id_path = id.path().into_iter().map(|string| CborValue::Text(string.to_owned())).collect();
+
+        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_GIVE.into()));
         let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
         let data = (CborValue::Integer(MSG_DATA.into()), data.cbor().to_owned());
         let value = CborValue::Map(vec![cmd, id, data]);

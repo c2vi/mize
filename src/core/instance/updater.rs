@@ -47,7 +47,7 @@ fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> 
     match msg.cmd()? {
         MessageCmd::Get => {
             let id = msg.id(instance)?;
-            let mut connection = instance.get_connection(msg.conn_id)?;
+            let mut connection = instance.get_connection(msg.conn_id)?.clone();
             let item = instance.get(id.clone())?;
             let msg = MizeMessage::new_give(id, item.as_data_full()?, msg.conn_id);
             connection.send(msg)?;

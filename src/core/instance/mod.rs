@@ -56,6 +56,7 @@ pub struct Instance {
     threads: Vec<String>,
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
+    give_msg_wait: Arc<Mutex<HashMap<MizeId, (Sender<ItemData>, Receiver<ItemData>)>>>,
 }
 
 pub struct InstanceRef {
@@ -76,6 +77,7 @@ impl Instance {
         let subs = Arc::new(Mutex::new(HashMap::new()));
         let namespace = Namespace ( namespace_pool_raw.get("mize.default.namespace") );
         let (op_tx, op_rx) = channel::unbounded();
+        let give_msg_wait = Arc::new(Mutex::new(HashMap::new()));
 
         let mut instance = Instance { 
             store: Box::new(store), 
@@ -85,6 +87,7 @@ impl Instance {
             context: vec![],
             threads: vec![],
             next_con_id: Arc::new(Mutex::new(1)),
+            give_msg_wait,
 
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
@@ -214,13 +217,34 @@ impl Instance {
         let mut conn_inner = self.connections.lock()?;
         let mut next_con_id = self.next_con_id.lock()?;
 
-        let connection = Connection { id: next_con_id.to_owned(), rx, tx};
+        let connection = Connection { id: next_con_id.to_owned(), rx, tx, ns: None};
         conn_inner.push(connection);
         *next_con_id += 1;
         Ok(next_con_id.to_owned())
     }
 
-    pub fn get_connection(&mut self, conn_id: u64) -> MizeResult<Connection> {
+    pub fn connection_set_namespace(&mut self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
+        let mut connection = self.get_connection(conn_id)?;
+        connection.ns = Some(namespace);
+        self.set_connection(conn_id, connection);
+        Ok(())
+    }
+
+    fn set_connection(&mut self, conn_id: u64, new_connection: Connection) -> MizeResult<()> {
+        let mut conn_inner = self.connections.lock()?;
+
+        for connection in conn_inner.iter_mut() {
+            if connection.id == conn_id {
+                *connection = new_connection;
+                return Ok(());
+            }
+        }
+
+        return Err(mize_err!("Connection with id {} not known to instance", conn_id));
+        Ok(())
+    }
+
+    pub fn get_connection(&self, conn_id: u64) -> MizeResult<Connection> {
         let mut conn_inner = self.connections.lock()?;
 
         for connection in conn_inner.iter() {
@@ -236,6 +260,29 @@ impl Instance {
         self.threads.push(name.to_owned());
         thread::spawn(move || func());
         Ok(())
+    }
+
+    pub fn give_msg_wait(&self, id: MizeId) -> MizeResult<ItemData> {
+
+        let mut give_msg_wait_inner = self.give_msg_wait.lock()?;
+
+        let rx = match give_msg_wait_inner.get(&id) {
+            // if this id is already in the process of being requested, just use the rx already there
+            Some((tx, rx)) => rx.to_owned(),
+
+            None => {
+                let (tx, rx) = crossbeam::channel::bounded::<ItemData>(1);
+                give_msg_wait_inner.insert(id, (tx, rx.clone()));
+                rx
+            },
+        };
+
+        // so that another thread can also give_msg_wait(), while we wait in the recv() of rx
+        drop(give_msg_wait_inner);
+
+        let data = rx.recv()?;
+
+        return Ok(data);
     }
 
     #[cfg(feature = "async")]

@@ -2,7 +2,7 @@ use ciborium::Value as CborValue;
 use serde::Deserialize;
 use std::env::VarError;
 use std::fs;
-use tracing::{debug, error, warn, trace};
+use tracing::{debug, error, info, trace, warn};
 use clap::ArgMatches;
 use std::path::Path;
 
@@ -12,6 +12,7 @@ use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::item::{ItemData, IntoItemData};
 use crate::memstore::MemStore;
+use crate::mize_err;
 use crate::platform::os::unix_socket::UnixListener;
 
 use self::fsstore::FileStore;
@@ -60,10 +61,27 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         }
     };
 
-    ////// if a config.store is set, upgrade to the filestore there
-    let store_path = instance.get("0/config/store_path")?.value_string()?;
+    ////// if a config.store_path is set, upgrade to the filestore there
+    let mut store_path = instance.get("0/config/store_path")?.value_string()?;
 
-    if store_path != "" {
+    if store_path == "" {
+        let home_dir = env!("HOME");
+        if home_dir == "" {
+            return Err(mize_err!("env var $HOME empty"));
+        }
+
+        // the default store_path: $HOME/.mize
+        store_path = home_dir.to_owned() + "/.mize";
+    }
+
+    if FileStore::store_is_opened(store_path.to_owned())? {
+        // if the store is already opened, connect to the instance, that opened it and join
+        // it's namespace
+        info!("CONNECTING");
+        return Ok(());
+
+    } else {
+        // else open it ourselves
         let file_store = FileStore::new(store_path.as_str())?;
         instance.migrate_to_store(Box::new(file_store))?;
 

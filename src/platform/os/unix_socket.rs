@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::net::UnixListener as TokioUnixListener;
+use tokio::net::{UnixListener as TokioUnixListener, UnixStream};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::io::{Interest, AsyncReadExt, AsyncWriteExt};
 use crossbeam::channel::{Receiver, Sender, unbounded};
 use ciborium::Value as CborValue;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::instance::connection::{ConnListener, Connection};
 use crate::instance::{self, Instance};
@@ -20,7 +20,34 @@ impl UnixListener {
     pub fn new(store_path: PathBuf) -> MizeResult<UnixListener> {
         Ok(UnixListener { sock_path: store_path.join("sock").to_owned() })
     }
+
 }
+
+
+pub fn connect(instance: &mut Instance, store_path: PathBuf) -> MizeResult<()> {
+    instance.spawn_async("unix_connection", connect_async(instance.clone(), store_path) );
+
+    Ok(())
+}
+
+
+async fn connect_async(mut instance: Instance, store_path: PathBuf) -> MizeResult<()> {
+    let mut stream = UnixStream::connect(store_path).await?;
+    let (read_half, write_half) = stream.split();
+
+    let (recieve_tx, recieve_rx) = unbounded::<MizeMessage>();
+    let (send_tx, send_rx) = unbounded::<MizeMessage>();
+    
+    let conn_id = instance.new_connection(recieve_rx, send_tx)?;
+    let ns_of_peer = instance.get(format!("inst/con_by_id/{}/peer/0/config/namespace", conn_id))?.value_string()?;
+
+    info!("connect_async ... ns_of_peer: {}", ns_of_peer);
+
+    //instance.connection_set_namespace(conn_id, namespace)
+
+    Ok(())
+}
+
 
 impl ConnListener for UnixListener {
     fn listen(self, mut instance: Instance) -> MizeResult<()> {
