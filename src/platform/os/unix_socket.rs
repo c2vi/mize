@@ -25,15 +25,17 @@ impl UnixListener {
 
 
 pub fn connect(instance: &mut Instance, store_path: PathBuf) -> MizeResult<()> {
-    instance.spawn_async("unix_connection", connect_async(instance.clone(), store_path) );
+    instance.spawn_async_blocking("unix_connection", connect_async(instance.clone(), store_path) );
 
     Ok(())
 }
 
 
 async fn connect_async(mut instance: Instance, store_path: PathBuf) -> MizeResult<()> {
-    let mut stream = UnixStream::connect(store_path).await?;
+    println!("we are never hereeeeeeeeeeeeee");
+    let mut stream = UnixStream::connect(store_path.join("sock")).await?;
     let (read_half, write_half) = stream.split();
+    println!("we are never hoooooooooooooooooooooooooooooo");
 
     let (recieve_tx, recieve_rx) = unbounded::<MizeMessage>();
     let (send_tx, send_rx) = unbounded::<MizeMessage>();
@@ -59,7 +61,7 @@ impl ConnListener for UnixListener {
 
 async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResult<()> {
     // remove the file at sock_path if it already exists
-    fs::remove_file(&listener.sock_path)?;
+    fs::remove_file(&listener.sock_path);
 
     let listener = TokioUnixListener::bind(&listener.sock_path)
         .mize_result_msg(format!("Could not bind to unix socket at '{}'", listener.sock_path.display()))?;
@@ -67,6 +69,7 @@ async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResu
     loop {
         let (mut unix_sock, addr) = listener.accept().await
             .mize_result_msg("Error while accepting Unix sock connection")?;
+        info!("new connection");
 
         let (recieve_tx, recieve_rx) = unbounded::<MizeMessage>();
         let (send_tx, send_rx) = unbounded::<MizeMessage>();

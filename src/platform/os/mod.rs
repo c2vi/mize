@@ -78,6 +78,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         // if the store is already opened, connect to the instance, that opened it and join
         // it's namespace
         info!("CONNECTING");
+        unix_socket::connect(instance, store_path.into())?;
         return Ok(());
 
     } else {

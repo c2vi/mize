@@ -292,6 +292,13 @@ impl Instance {
         runtime_inner.spawn(func);
     }
 
+    #[cfg(feature = "async")]
+    pub fn spawn_async_blocking<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) {
+        self.threads.push(name.to_owned());
+        let runtime_inner = self.runtime.lock().unwrap();
+        runtime_inner.block_on(func);
+    }
+
     pub fn wait(&self) {
         loop {
             thread::sleep_ms(10000000)
