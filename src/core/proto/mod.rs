@@ -81,6 +81,7 @@ impl MizeMessage {
         let cmd = match val_of_c {
             1 => MessageCmd::Get,
             2 => MessageCmd::Set,
+            3 => MessageCmd::Give,
             _ => {
                 return Err(MizeError::new().msg("error cmd of msg was not a valid command"));
             },
@@ -104,7 +105,7 @@ impl MizeMessage {
             for (key, val) in msg_as_map {
                 if let CborValue::Integer(key_int) = key {
                     // number 2 indicates the id field
-                    let two: Integer = 1.into();
+                    let two: Integer = 2.into();
                     if key_int == &two {
                         data = val;
                     }
@@ -170,6 +171,7 @@ impl MizeMessage {
 pub enum MessageCmd {
     Get,
     Set,
+    Give,
 }
 
 

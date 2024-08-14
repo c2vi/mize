@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::create_dir;
 use std::thread::JoinHandle;
 use std::{thread, vec};
-use crossbeam::channel::{self, Receiver, Sender};
+use crossbeam::channel::{self, bounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use tracing::{trace, debug, info, warn, error};
 use uuid::Uuid;
@@ -23,6 +23,7 @@ use crate::memstore::MemStore;
 use crate::instance::updater::Operation;
 use crate::mize_err;
 use crate::proto::MizeMessage;
+use tokio::runtime::Handle;
 
 use self::connection::{ConnListener, Connection};
 
@@ -56,7 +57,7 @@ pub struct Instance {
     threads: Vec<String>,
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
-    give_msg_wait: Arc<Mutex<HashMap<MizeId, (Sender<ItemData>, Receiver<ItemData>)>>>,
+    give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
 }
 
 pub struct InstanceRef {
@@ -213,14 +214,15 @@ impl Instance {
         Ok(())
     }
 
-    pub fn new_connection(&mut self, rx: Receiver<MizeMessage>, tx: Sender<MizeMessage>) -> MizeResult<u64> {
+    pub fn new_connection(&mut self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
         let mut conn_inner = self.connections.lock()?;
         let mut next_con_id = self.next_con_id.lock()?;
+        let old_next_con_id = *next_con_id;
 
-        let connection = Connection { id: next_con_id.to_owned(), rx, tx, ns: None};
+        let connection = Connection { id: next_con_id.to_owned(), tx, ns: None};
         conn_inner.push(connection);
         *next_con_id += 1;
-        Ok(next_con_id.to_owned())
+        Ok(old_next_con_id)
     }
 
     pub fn connection_set_namespace(&mut self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
@@ -228,6 +230,10 @@ impl Instance {
         connection.ns = Some(namespace);
         self.set_connection(conn_id, connection);
         Ok(())
+    }
+
+    pub(crate) fn got_msg(&mut self, msg: MizeMessage) -> MizeResult<()> {
+        Ok(self.op_tx.send(Operation::Msg(msg))?)
     }
 
     fn set_connection(&mut self, conn_id: u64, new_connection: Connection) -> MizeResult<()> {
@@ -248,6 +254,7 @@ impl Instance {
         let mut conn_inner = self.connections.lock()?;
 
         for connection in conn_inner.iter() {
+            println!("get_connection iterrrrrrrrrrrrrr");
             if connection.id == conn_id {
                 return Ok(connection.clone());
             }
@@ -266,18 +273,20 @@ impl Instance {
 
         let mut give_msg_wait_inner = self.give_msg_wait.lock()?;
 
-        let rx = match give_msg_wait_inner.get(&id) {
-            // if this id is already in the process of being requested, just use the rx already there
-            Some((tx, rx)) => rx.to_owned(),
+        let (tx, rx) = bounded::<ItemData>(1);
 
+        let vec = match give_msg_wait_inner.get_mut(&id) {
+            Some(vec) => vec,
             None => {
-                let (tx, rx) = crossbeam::channel::bounded::<ItemData>(1);
-                give_msg_wait_inner.insert(id, (tx, rx.clone()));
-                rx
-            },
+                give_msg_wait_inner.insert(id.clone(), Vec::new());
+                give_msg_wait_inner.get_mut(&id).unwrap()
+            }
         };
 
+        vec.push(tx);
+
         // so that another thread can also give_msg_wait(), while we wait in the recv() of rx
+        drop(vec);
         drop(give_msg_wait_inner);
 
         let data = rx.recv()?;
@@ -291,15 +300,27 @@ impl Instance {
         let runtime_inner = self.runtime.lock().unwrap();
         runtime_inner.spawn(func);
     }
+    #[cfg(feature = "async")]
+    pub fn async_get_handle(&mut self) -> Handle {
+        let runtime_inner = self.runtime.lock().unwrap();
+        let handle = runtime_inner.handle().to_owned();
+        handle
+    }
 
     #[cfg(feature = "async")]
-    pub fn spawn_async_blocking<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) {
+    pub fn spawn_async_blocking<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) -> F::Output {
+        use std::process::Output;
+
         self.threads.push(name.to_owned());
         let runtime_inner = self.runtime.lock().unwrap();
-        runtime_inner.block_on(func);
+        let handle = runtime_inner.handle().to_owned();
+        drop(runtime_inner);
+        let result = handle.block_on(func);
+        return result;
     }
 
     pub fn wait(&self) {
+        info!("Instance main thread waiting");
         loop {
             thread::sleep_ms(10000000)
         }

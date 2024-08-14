@@ -1,5 +1,5 @@
 use crossbeam::channel::Receiver;
-use tracing::{trace, error};
+use tracing::{error, trace, warn};
 
 use crate::mize_err;
 use crate::{instance::Instance, item::ItemData};
@@ -23,6 +23,7 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, mut instance: Instance
 
         if let Err(err) = result {
             error!("OPERATION FAILED: {:?}", operation);
+            err.log();
         }
     }
     Ok(())
@@ -56,6 +57,18 @@ fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> 
             let data = msg.data()?;
             let id = msg.id(instance)?;
             instance.set(id, data);
+        },
+        MessageCmd::Give => {
+            let id = msg.id(instance)?;
+            let data = msg.data()?;
+            let give_msg_wait_inner = instance.give_msg_wait.lock()?;
+            if let Some(vec) = give_msg_wait_inner.get(&id) {
+                for tx in vec {
+                    tx.send(data.clone());
+                }
+            } else {
+                warn!("got give msg for id '{}', that has no one waiting for it", id);
+            }
         },
         _ => {
             return Err(mize_err!("got a message, that is not handeled"));

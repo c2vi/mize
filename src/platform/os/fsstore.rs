@@ -41,12 +41,13 @@ impl FileStore {
         }
 
         // init the store
-        fs::write(path.join("next_id"), "0");
+        fs::write(path.join("next_id"), "1");
 
         Ok(FileStore { path: Path::new(&path).to_owned() })
     }
 
     pub fn store_is_opened(store_path: String) -> MizeResult<bool> {
+        println!("valid_pid_file: {}", valid_pid_file(Path::new(&store_path))?.is_some());
         Ok(valid_pid_file(Path::new(&store_path))?.is_some())
     }
 }

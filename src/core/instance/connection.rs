@@ -12,7 +12,6 @@ use crate::item::{get_raw_from_cbor, Item};
 // only created with Instance::new_connection()
 #[derive(Clone)]
 pub struct Connection {
-    pub rx: Receiver<MizeMessage>,
     pub tx: Sender<MizeMessage>,
     pub id: u64,
     pub ns: Option<Namespace>,
@@ -46,13 +45,15 @@ pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<Vec<u8>> {
     let skipped = new_id_str.skip(4);
     let new_id = item.instance.new_id(skipped.collect::<Vec<&String>>())?;
 
+    println!("value_raw_from_peer hereeeeeeeeeee");
     let connection = item.instance.get_connection(conn_id)?;
+    println!("value_raw_from_peer afteeeeerrrrrrrrrrrrrrrr");
 
-    let msg = MizeMessage::new_get(new_id, connection.id);
+    let msg = MizeMessage::new_get(new_id.clone(), connection.id);
 
     connection.tx.send(msg)?;
 
-    let data = item.instance.give_msg_wait(item.id())?;
+    let data = item.instance.give_msg_wait(new_id)?;
 
     let raw_data = get_raw_from_cbor(data.cbor(), vec![])?;
     return Ok(raw_data.to_owned());
