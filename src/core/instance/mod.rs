@@ -42,22 +42,26 @@ static MSG_CHANNEL_SIZE: usize = 200;
 /// The Instance type is the heart of the mize system
 #[derive(Clone)]
 pub struct Instance {
-    // question vec of stores???
-    // would mean replication logic and such things is handeled by the instance
-    // i think it would be better thogh to then implement a ReplicatedStore
+    // a bit a lot of Mutexes isn-it???
     pub store: Box<dyn Store>,
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
-    pub namespace: Namespace,
+
+    // the namespace the instance operates in
+    pub namespace: Arc<Mutex<Namespace>>,
+
+    // the namespace of the instance itself
+    // TODO: set to a random uuid
+    pub self_namespace: Arc<Mutex<Namespace>>,
     op_tx: channel::Sender<Operation>,
     context: Vec<MizeId>,
     threads: Vec<String>,
+    give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
-    give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
 }
 
 pub struct InstanceRef {
@@ -76,14 +80,15 @@ impl Instance {
         let namespace_pool_raw = StringPool::default();
         let connections = Arc::new(Mutex::new(Vec::new()));
         let subs = Arc::new(Mutex::new(HashMap::new()));
-        let namespace = Namespace ( namespace_pool_raw.get("mize.default.namespace") );
         let (op_tx, op_rx) = channel::unbounded();
         let give_msg_wait = Arc::new(Mutex::new(HashMap::new()));
+        let namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
+        let self_namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
 
         let mut instance = Instance { 
             store: Box::new(store), 
             connections, subs, id_pool,
-            namespace, op_tx,
+            namespace, self_namespace, op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
             context: vec![],
             threads: vec![],
@@ -189,16 +194,28 @@ impl Instance {
 
     pub fn id_from_string(&self, string: String) -> MizeResult<MizeId> {
         let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).collect();
-        let id_pool_inner = self.id_pool.lock()?;
-
-        let id = MizeId { path: id_pool_inner.get(vec_string), namespace: self.namespace.clone() };
-
-        Ok(id)
+        self.id_from_vec_string(vec_string)
     }
 
-    pub fn id_from_vec_string(&self, vec_string: Vec<String>) -> MizeResult<MizeId> {
+    pub fn id_from_vec_string(&self, mut vec_string: Vec<String>) -> MizeResult<MizeId> {
         let id_pool_inner = self.id_pool.lock()?;
-        let id = MizeId { path: id_pool_inner.get(vec_string), namespace: self.namespace.clone() };
+        let namespace_inner = self.namespace.lock()?;
+        let first_el = vec_string.first_mut().ok_or(mize_err!("MizeId was empty"))?;
+
+        let id = if first_el.contains(":") { // first el is a namespace + store_part
+            let new_first_el = first_el.clone();
+            let vec: Vec<&str> = new_first_el.split(":").collect();
+            let ns_part = vec.iter().nth(0).ok_or(mize_err!("should really not happen"))?;
+            let store_part = vec.iter().nth(1).ok_or(mize_err!("mizeid was like 'namespace:/hi', why are you doing that"))?;
+            *first_el = store_part.to_owned().to_owned();
+
+            MizeId { path: id_pool_inner.get(vec_string), namespace: self.namespace_from_string(ns_part.to_owned().to_owned())? }
+        } else {
+
+            MizeId { path: id_pool_inner.get(vec_string), namespace: namespace_inner.clone() }
+        };
+        trace!("new MizeId made: {:?}", id);
+
         Ok(id)
     }
 
@@ -206,6 +223,13 @@ impl Instance {
         let namespace_pool_inner = self.namespace_pool.lock()?;
         let namespace = Namespace ( namespace_pool_inner.get(ns_str) );
         Ok(namespace)
+    }
+
+    pub fn set_namespace(&mut self, ns: Namespace) -> MizeResult<()> {
+        let mut namespace_inner = self.namespace.lock()?;
+        *namespace_inner = ns;
+
+        Ok(())
     }
 
     pub fn add_listener<T: ConnListener +'static>(&mut self, listener: T) -> MizeResult<()> {
@@ -254,13 +278,24 @@ impl Instance {
         let mut conn_inner = self.connections.lock()?;
 
         for connection in conn_inner.iter() {
-            println!("get_connection iterrrrrrrrrrrrrr");
             if connection.id == conn_id {
                 return Ok(connection.clone());
             }
         }
 
         return Err(mize_err!("Connection with id {} not known to instance", conn_id));
+    }
+
+    pub fn get_connection_by_ns(&self, ns: Namespace) -> MizeResult<Connection> {
+        let mut conn_inner = self.connections.lock()?;
+
+        for connection in conn_inner.iter() {
+            if connection.ns == Some(ns.clone()) {
+                return Ok(connection.clone());
+            }
+        }
+
+        return Err(mize_err!("Connection with namespace {} not known to instance", ns.as_string()));
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {

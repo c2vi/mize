@@ -17,8 +17,13 @@ pub struct MizeId {
 pub struct Namespace ( pub SharedString );
 
 impl Namespace {
-    fn as_string(self) -> SharedString {
-        self.0
+    pub fn as_string(&self) -> SharedString {
+        self.0.clone()
+    }
+    pub fn as_real_string(&self) -> String {
+        let a =  self.as_string();
+        let b = a.to_string();
+        return b;
     }
 }
 

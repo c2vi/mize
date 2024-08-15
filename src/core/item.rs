@@ -14,6 +14,7 @@ use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::instance::Instance;
 use crate::instance::store::Store;
 use crate::id::MizeId;
+use crate::proto::MizeMessage;
 use ciborium::Value as CborValue;
 use crate::instance::connection::value_raw_con_by_id;
 
@@ -40,20 +41,9 @@ impl Item<'_> {
     }
 
     pub fn value_raw(&self) -> MizeResult<Vec<u8>> {
-        let id = self.id();
-
-        // some paths like inst/con_by_id/x/ are not stored in the store, but gotten from the instance
-        // itself (the data for that lifes in memory in the instance struct)
-        // so here we set handlers for certain paths
-        if id.store_part() == "inst" {
-            match id.nth_part(1)? {
-                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
-                _ => {},
-            }
-        }
-
-        // this will call from the instance which gets the value from the store
-        self.instance.store.get_value_raw(self.id())
+        let data = self.as_data_full()?;
+        let raw = get_raw_from_cbor(data.cbor(), vec![])?;
+        return Ok(raw.to_owned());
     }
 
     pub fn value_string(&self) -> MizeResult<String> {
@@ -63,7 +53,57 @@ impl Item<'_> {
     }
 
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
-        self.instance.store.get_value_data_full(self.id())
+        let id = self.id();
+
+        // some paths like inst/con_by_id/x/ are not stored in the store, but gotten from the instance
+        // itself (the data for that lifes in memory in the instance struct)
+        // so here we set handlers for certain paths
+        if id.store_part() == "inst" {
+            match id.nth_part(1)? {
+                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
+                "namespace" => { 
+                    let namespace_inner = self.instance.namespace.lock()?;
+                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                },
+                "self_namespace" => { 
+                    let namespace_inner = self.instance.self_namespace.lock()?;
+                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                },
+                _ => {},
+            }
+        }
+
+        // the instance we are
+        if id.store_part() == "self" {
+            match id.nth_part(1)? {
+                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
+                "namespace" => { 
+                    let namespace_inner = self.instance.namespace.lock()?;
+                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                },
+                "self_namespace" => { 
+                    let namespace_inner = self.instance.self_namespace.lock()?;
+                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                },
+                _ => {},
+            }
+        }
+
+        let self_namespace_inner = self.instance.self_namespace.lock()?;
+
+        if self.id().namespace() == self_namespace_inner.to_owned() {
+            debug!("getting item from store");
+            return self.instance.store.get_value_data_full(self.id())
+
+        } else {
+
+            let mut connection = self.instance.get_connection_by_ns(self.id().namespace())?;
+            let msg = MizeMessage::new_get(self.id(), connection.id);
+            connection.send(msg);
+            let data = self.instance.give_msg_wait(self.id())?;
+            return Ok(data);
+
+        }
     }
 
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
@@ -89,6 +129,12 @@ impl<'a> Display for Item<'a> {
 impl ItemData {
     pub fn new() -> ItemData {
         ItemData(CborValue::Null)
+    }
+
+    pub fn from_string<S: Into<String>>(into_string: S) -> ItemData {
+        let string = into_string.into();
+        let data = CborValue::Text(string);
+        return ItemData (data);
     }
 
     pub fn merge(&mut self, other: ItemData) {

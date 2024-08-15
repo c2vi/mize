@@ -7,7 +7,7 @@ use crate::proto::MizeMessage;
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
 
 use super::Instance;
-use crate::item::{get_raw_from_cbor, Item};
+use crate::item::{get_raw_from_cbor, Item, ItemData};
 
 // only created with Instance::new_connection()
 #[derive(Clone)]
@@ -27,7 +27,7 @@ impl Connection {
     }
 }
 
-pub fn value_raw_con_by_id(item: &mut Item) -> MizeResult<Vec<u8>> {
+pub fn value_raw_con_by_id(item: &mut Item) -> MizeResult<ItemData> {
     if item.id().nth_part(3)? == "peer" {
         return value_raw_from_peer(item);
     } else {
@@ -35,7 +35,7 @@ pub fn value_raw_con_by_id(item: &mut Item) -> MizeResult<Vec<u8>> {
     }
 }
 
-pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<Vec<u8>> {
+pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<ItemData> {
     let id = item.id();
 
     let conn_id_str = id.nth_part(2)?;
@@ -45,9 +45,7 @@ pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<Vec<u8>> {
     let skipped = new_id_str.skip(4);
     let new_id = item.instance.new_id(skipped.collect::<Vec<&String>>())?;
 
-    println!("value_raw_from_peer hereeeeeeeeeee");
     let connection = item.instance.get_connection(conn_id)?;
-    println!("value_raw_from_peer afteeeeerrrrrrrrrrrrrrrr");
 
     let msg = MizeMessage::new_get(new_id.clone(), connection.id);
 
@@ -55,7 +53,5 @@ pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<Vec<u8>> {
 
     let data = item.instance.give_msg_wait(new_id)?;
 
-    let raw_data = get_raw_from_cbor(data.cbor(), vec![])?;
-    return Ok(raw_data.to_owned());
-
+    return Ok(data);
 }
