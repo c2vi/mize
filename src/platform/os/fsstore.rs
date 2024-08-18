@@ -35,6 +35,7 @@ impl FileStore {
 
         } else {
             // write our own pid file
+            fs::remove_file(path.join("pid"));
             let pid = std::process::id();
             let mut file = OpenOptions::new().write(true).create(true).open(path.join("pid"))?;
             write!(file, "{}", pid)?;

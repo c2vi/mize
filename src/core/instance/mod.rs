@@ -60,6 +60,7 @@ pub struct Instance {
     context: Vec<MizeId>,
     threads: Vec<String>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
+    create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
 }
@@ -82,6 +83,7 @@ impl Instance {
         let subs = Arc::new(Mutex::new(HashMap::new()));
         let (op_tx, op_rx) = channel::unbounded();
         let give_msg_wait = Arc::new(Mutex::new(HashMap::new()));
+        let create_msg_wait = Arc::new(Mutex::new(None));
         let namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
         let self_namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
 
@@ -93,7 +95,7 @@ impl Instance {
             context: vec![],
             threads: vec![],
             next_con_id: Arc::new(Mutex::new(1)),
-            give_msg_wait,
+            give_msg_wait, create_msg_wait,
 
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
@@ -172,9 +174,29 @@ impl Instance {
         Ok(())
     }
 
-    pub fn new_item(&self) -> MizeResult<Item> {
+    pub fn new_item(&mut self) -> MizeResult<Item> {
+        if self.get_namespace()? != self.get_self_namespace()? {
+            // need to send create msg and wait for it
+            let mut connection = self.get_connection_by_ns(self.get_namespace()?)?;
+
+            let msg = MizeMessage::new_create(connection.id);
+
+            connection.send(msg)?;
+
+            let (tx, rx) = bounded::<MizeId>(1);
+
+            let mut msg_wait_inner = self.create_msg_wait.lock()?;
+            *msg_wait_inner = Some(tx);
+            drop(msg_wait_inner);
+
+            let id = rx.recv()?;
+            println!("new_item namespace: {:?}", id.namespace());
+
+            return Ok(Item::new(id, self));
+        }
+
         let id = self.id_from_string(self.store.new_id()?)?;
-        return Ok(Item::new(id, &self));
+        return Ok(Item::new(id, self));
     }
 
     pub fn get<I: IntoMizeId>(&self, id: I) -> MizeResult<Item> {
@@ -230,6 +252,16 @@ impl Instance {
         *namespace_inner = ns;
 
         Ok(())
+    }
+
+    pub fn get_namespace(&self) -> MizeResult<Namespace> {
+        let mut namespace_inner = self.namespace.lock()?;
+        return Ok(namespace_inner.clone());
+    }
+
+    pub fn get_self_namespace(&mut self) -> MizeResult<Namespace> {
+        let mut self_namespace_inner = self.self_namespace.lock()?;
+        return Ok(self_namespace_inner.clone());
     }
 
     pub fn add_listener<T: ConnListener +'static>(&mut self, listener: T) -> MizeResult<()> {

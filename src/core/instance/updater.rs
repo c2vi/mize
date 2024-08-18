@@ -44,7 +44,7 @@ fn handle_operation(operation: &mut Operation, instance: &mut Instance) -> MizeR
 }
 
 fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> {
-    println!("got msg: {:?}", msg);
+    println!("got msg: {}", msg);
     match msg.cmd()? {
         MessageCmd::Get => {
             let id = msg.id(instance)?;
@@ -53,11 +53,13 @@ fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> 
             let msg = MizeMessage::new_give(id, item.as_data_full()?, msg.conn_id);
             connection.send(msg)?;
         },
-        MessageCmd::Set => {
+
+        MessageCmd::Update => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
             instance.set(id, data);
         },
+
         MessageCmd::Give => {
             let id = msg.id(instance)?;
             let data = msg.data()?;
@@ -70,9 +72,24 @@ fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> 
                 warn!("got give msg for id '{}', that has no one waiting for it", id);
             }
         },
+
+        MessageCmd::Create => {
+            let item = instance.new_item()?;
+            let reply_msg = MizeMessage::new_create_reply(item.id());
+            let connection = instance.get_connection(msg.conn_id)?;
+            connection.send(reply_msg)?;
+        }
+
+        MessageCmd::CreateReply => {
+            let create_msg_wait_inner = instance.create_msg_wait.lock()?;
+            if let Some(sender) = create_msg_wait_inner.as_ref() {
+                sender.send(msg.id(&mut instance.clone())?)?;
+            }
+            return Ok(());
+        }
         _ => {
             return Err(mize_err!("got a message, that is not handeled"));
-        }
+        },
     }
     Ok(())
 }

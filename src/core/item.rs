@@ -55,23 +55,6 @@ impl Item<'_> {
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
         let id = self.id();
 
-        // some paths like inst/con_by_id/x/ are not stored in the store, but gotten from the instance
-        // itself (the data for that lifes in memory in the instance struct)
-        // so here we set handlers for certain paths
-        if id.store_part() == "inst" {
-            match id.nth_part(1)? {
-                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
-                "namespace" => { 
-                    let namespace_inner = self.instance.namespace.lock()?;
-                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                },
-                "self_namespace" => { 
-                    let namespace_inner = self.instance.self_namespace.lock()?;
-                    return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                },
-                _ => {},
-            }
-        }
 
         // the instance we are
         if id.store_part() == "self" {
@@ -93,16 +76,31 @@ impl Item<'_> {
 
         if self.id().namespace() == self_namespace_inner.to_owned() {
             debug!("getting item from store");
+
+            if id.store_part() == "inst" {
+                match id.nth_part(1)? {
+                    "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
+                    "namespace" => { 
+                        let namespace_inner = self.instance.namespace.lock()?;
+                        return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                    },
+                    "self_namespace" => { 
+                        let namespace_inner = self.instance.self_namespace.lock()?;
+                        return Ok(ItemData::from_string(namespace_inner.as_real_string()));
+                    },
+                    _ => {},
+                }
+            }
+
             return self.instance.store.get_value_data_full(self.id())
 
-        } else {
 
+        } else {
             let mut connection = self.instance.get_connection_by_ns(self.id().namespace())?;
             let msg = MizeMessage::new_get(self.id(), connection.id);
             connection.send(msg);
             let data = self.instance.give_msg_wait(self.id())?;
             return Ok(data);
-
         }
     }
 

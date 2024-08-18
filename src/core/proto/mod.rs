@@ -1,8 +1,12 @@
+use core::fmt;
+use std::io;
+use serde::Serialize;
+
 use ciborium::{value::Integer, Value as CborValue};
 
-use crate::{error::{MizeError, MizeResult}, id::MizeId, instance::{connection::Connection, Instance}, item::{IntoItemData, ItemData}};
+use crate::{error::{MizeError, MizeResult}, id::MizeId, instance::{self, connection::Connection, Instance}, item::{IntoItemData, ItemData}};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MizeMessage {
     value: CborValue,
     pub conn_id: u64,
@@ -15,8 +19,24 @@ static MSG_DATA: u16 = 3;
 
 // cmds
 static CMD_GET: u16 = 1;
-static CMD_SET: u16 = 2;
+static CMD_UPDATE: u16 = 2;
 static CMD_GIVE: u16 = 3;
+static CMD_CREATE: u16 = 4;
+static CMD_CREATE_REPLY: u16 = 5;
+static CMD_UPDATE_REQUEST: u16 = 6;
+
+#[derive(Debug)]
+pub enum MessageCmd {
+    Get,
+    Update,
+    Give,
+    Create,
+    CreateReply,
+    UpdateRequest,
+}
+
+
+
 
 impl MizeMessage {
     pub fn new(value: CborValue, conn_id: u64) -> MizeMessage {
@@ -29,6 +49,13 @@ impl MizeMessage {
         let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_GET.into()));
         let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
         let value = CborValue::Map(vec![cmd, id]);
+
+        MizeMessage::new(value, conn_id)
+    }
+
+    pub fn new_create(conn_id: u64) -> MizeMessage {
+        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_CREATE.into()));
+        let value = CborValue::Map(vec![cmd]);
 
         MizeMessage::new(value, conn_id)
     }
@@ -80,8 +107,11 @@ impl MizeMessage {
         // match on value of c
         let cmd = match val_of_c {
             1 => MessageCmd::Get,
-            2 => MessageCmd::Set,
+            2 => MessageCmd::Update,
             3 => MessageCmd::Give,
+            4 => MessageCmd::Create,
+            5 => MessageCmd::CreateReply,
+            6 => MessageCmd::UpdateRequest,
             _ => {
                 return Err(MizeError::new().msg("error cmd of msg was not a valid command"));
             },
@@ -91,7 +121,7 @@ impl MizeMessage {
     }
 
     
-    pub fn id(&mut self, instance: &mut Instance) -> MizeResult<MizeId> {
+    pub fn id_str(&mut self) -> MizeResult<Vec<String>> {
         // return err, if msg is not a map
         let msg_as_map = match &self.value {
             CborValue::Map(val) => val,
@@ -134,8 +164,12 @@ impl MizeMessage {
             }
         }
 
-        let id = instance.id_from_vec_string(vec_string)?;
-        Ok(id)
+        Ok(vec_string)
+    }
+
+    pub fn id(&mut self, instance: &mut Instance) -> MizeResult<MizeId> {
+        let id_str = self.id_str()?;
+        return instance.new_id(id_str);
     }
 
     pub fn data(&mut self) -> MizeResult<ItemData> {
@@ -168,12 +202,61 @@ impl MizeMessage {
     }
 }
 
-pub enum MessageCmd {
-    Get,
-    Set,
-    Give,
+
+// thanks to: https://stackoverflow.com/a/61768916
+struct DisplayWriter<'a, 'b>(&'a mut fmt::Formatter<'b>);
+
+impl<'a, 'b> io::Write for DisplayWriter<'a, 'b> {
+    fn write(&mut self, bytes: &[u8]) -> std::result::Result<usize, std::io::Error> {
+        
+        self.0.write_str(&String::from_utf8_lossy(bytes))
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> { todo!() }
 }
 
+impl fmt::Display for MizeMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
+
+        if let Ok(cmd) = self.to_owned().cmd() {
+            writeln!(f, "MizeMessage with cmd: {:?}", cmd);
+        } else {
+            writeln!(f, "MizeMessage with unparsable cmd");
+        };
+
+        if let Ok(id) = self.to_owned().id_str() {
+            let id_str = id.join("/");
+            writeln!(f, "\tid: {}", id_str);
+        } else {
+            writeln!(f, "id: parsing error");
+        }
+
+        if let Ok(data) = self.to_owned().data() {
+            let value = data.cbor();
+            write!(f, "\tdata: ");
+            let display_writer = DisplayWriter (f);
+            value.serialize(&mut serde_json::Serializer::pretty(display_writer))
+                .map_err(|serde_err| std::fmt::Error)?
+        } else {
+            writeln!(f, "\tdata: unparsable");
+        }
+
+        Ok(())
+
+    }
+}
+
+impl fmt::Debug for MizeMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\nMizeMessage: ");
+        let display_writer = DisplayWriter (f);
+        let value = self.to_owned().value();
+        value.serialize(&mut serde_json::Serializer::pretty(display_writer))
+            .map_err(|serde_err| std::fmt::Error)
+    }
+}
 
 

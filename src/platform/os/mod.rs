@@ -17,7 +17,7 @@ use crate::platform::os::unix_socket::UnixListener;
 
 use self::fsstore::FileStore;
 
-mod fsstore;
+pub mod fsstore;
 mod unix_socket;
 //mod web;
 

@@ -122,7 +122,7 @@ async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResu
 
 fn unix_outgoing(mut unix_write: OwnedWriteHalf, send_rx: Receiver<MizeMessage>, mut instance: Instance, conn_id: u64) -> MizeResult<()> {
     for msg in send_rx {
-        println!("unix outgoing got msg: {:?}", msg);
+        println!("unix outgoing got msg: {}", msg);
         let adapter = MyCiboriumWriter { inner: &mut unix_write, instance: &mut instance };
         let value = msg.value();
         ciborium::into_writer(&value, adapter)?
@@ -139,7 +139,7 @@ fn unix_incomming(mut unix_read: OwnedReadHalf, mut instance: Instance, conn_id:
             break;
         }
         let msg = MizeMessage::new(value, conn_id);
-        println!("unix incoming got msg: {:?}", msg);
+        println!("unix incoming got msg: {}", msg);
         instance.got_msg(msg);
     }
     Ok(())
