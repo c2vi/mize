@@ -44,6 +44,7 @@ impl Store for MemStore {
         Ok(Vec::new())
     }
     fn new_id(&self) -> MizeResult<String> {
+        println!("are we hereeeeeee memstore new_get");
         let mut inner = self.inner.lock()?;
 
         let id_string = format!("{}", inner.next_id);

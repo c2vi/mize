@@ -16,6 +16,7 @@ pub fn create(sub_matches: &ArgMatches) -> MizeResult<()> {
     let item = instance.new_item()?;
 
     println!("id: {}", item.id());
+    println!("with namespace: {}", item.id().namespace().as_real_string());
 
     return Ok(());
 }

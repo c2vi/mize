@@ -1,4 +1,4 @@
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 use serde::Serialize;
 use core::fmt;
 use std::{i128, string};
@@ -92,7 +92,8 @@ impl Item<'_> {
                 }
             }
 
-            return self.instance.store.get_value_data_full(self.id())
+            let store_inner = self.instance.store.lock()?;
+            return store_inner.get_value_data_full(self.id());
 
 
         } else {
@@ -105,13 +106,14 @@ impl Item<'_> {
     }
 
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
-        let mut old_data = self.instance.store.get_value_data_full(self.id())?;
+        let store_inner = self.instance.store.lock()?;
+        let mut old_data = store_inner.get_value_data_full(self.id())?;
 
         let new_data = value.into();
 
         old_data.merge(new_data);
 
-        self.instance.store.set(self.id(), old_data)?;
+        store_inner.set(self.id(), old_data)?;
         Ok(())
     }
 }

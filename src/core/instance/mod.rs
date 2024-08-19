@@ -43,7 +43,7 @@ static MSG_CHANNEL_SIZE: usize = 200;
 #[derive(Clone)]
 pub struct Instance {
     // a bit a lot of Mutexes isn-it???
-    pub store: Box<dyn Store>,
+    pub store: Arc<Mutex<Box<dyn Store>>>,
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
@@ -76,7 +76,6 @@ pub struct InstanceAsync {
 
 impl Instance {
     pub fn empty() -> MizeResult<Instance> {
-        let store = MemStore::new();
         let id_pool = Arc::new(Mutex::new(VecStringPool::default()));
         let namespace_pool_raw = StringPool::default();
         let connections = Arc::new(Mutex::new(Vec::new()));
@@ -88,7 +87,7 @@ impl Instance {
         let self_namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
 
         let mut instance = Instance { 
-            store: Box::new(store), 
+            store: Arc::new(Mutex::new(Box::new(MemStore::new()))),
             connections, subs, id_pool,
             namespace, self_namespace, op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
@@ -102,7 +101,7 @@ impl Instance {
         };
 
         let instance_clone = instance.clone();
-        let closure = move || updater_thread(op_rx, instance_clone);
+        let closure = move || updater_thread(op_rx, &instance_clone);
         instance.spawn("updater_thread", closure)?;
 
         // will probably move the msg stuff into it's own thread
@@ -135,6 +134,7 @@ impl Instance {
 
         // end of platform specific init code
 
+        debug!("INSTANCE INIT DONE");
         Ok(())
     }
 
@@ -145,36 +145,30 @@ impl Instance {
         instance.set("0", config.clone());
         instance.init()?;
 
-        // set it again, so that the passed config data has presidence over anything the init would set
-        debug!("overwriting instance config again with the one passed to Instance::with_config()");
-        instance.set("0", config);
-
-        debug!("instance inited with conifg: {}", instance.get("0/config")?);
-
         Ok(instance)
     }
 
-    pub fn migrate_to_store(&mut self, new_store: Box<dyn Store>) -> MizeResult<()> {
+    pub fn migrate_to_store(&self, new_store: Box<dyn Store>) -> MizeResult<()> {
         println!("MIGRATING");
-        let old_store = &self.store;
+        let mut old_store = self.store.lock()?;
 
         let id = self.id_from_string("0".to_owned())?;
-        let inst_data = self.store.get_value_data_full(id.clone())?;
+        let inst_data = old_store.get_value_data_full(id.clone())?;
         new_store.set(id, inst_data.to_owned())?;
 
         for id in old_store.id_iter()? {
-            let data = self.store.get_value_data_full(self.id_from_string(id?)?)?;
+            let data = old_store.get_value_data_full(self.id_from_string(id?)?)?;
 
             let id_of_new_store = new_store.new_id()?;
             new_store.set(self.id_from_string(id_of_new_store)?, data.to_owned())?;
         };
 
-        self.store = new_store;
+        *old_store = new_store;
 
         Ok(())
     }
 
-    pub fn new_item(&mut self) -> MizeResult<Item> {
+    pub fn new_item(&self) -> MizeResult<Item> {
         if self.get_namespace()? != self.get_self_namespace()? {
             // need to send create msg and wait for it
             let mut connection = self.get_connection_by_ns(self.get_namespace()?)?;
@@ -195,7 +189,8 @@ impl Instance {
             return Ok(Item::new(id, self));
         }
 
-        let id = self.id_from_string(self.store.new_id()?)?;
+        let store_inner = self.store.lock()?;
+        let id = self.id_from_string(store_inner.new_id()?)?;
         return Ok(Item::new(id, self));
     }
 
@@ -204,7 +199,7 @@ impl Instance {
         return Ok(Item::new(id, &self));
     }
 
-    pub fn set<I: IntoMizeId, V: Into<ItemData>>(&mut self, id: I, value: V) -> MizeResult<()> {
+    pub fn set<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
         let id = id.to_mize_id(self)?;
         self.op_tx.send(Operation::Set(id, value.into()));
         Ok(())
@@ -247,7 +242,7 @@ impl Instance {
         Ok(namespace)
     }
 
-    pub fn set_namespace(&mut self, ns: Namespace) -> MizeResult<()> {
+    pub fn set_namespace(&self, ns: Namespace) -> MizeResult<()> {
         let mut namespace_inner = self.namespace.lock()?;
         *namespace_inner = ns;
 
@@ -259,7 +254,7 @@ impl Instance {
         return Ok(namespace_inner.clone());
     }
 
-    pub fn get_self_namespace(&mut self) -> MizeResult<Namespace> {
+    pub fn get_self_namespace(&self) -> MizeResult<Namespace> {
         let mut self_namespace_inner = self.self_namespace.lock()?;
         return Ok(self_namespace_inner.clone());
     }
@@ -270,7 +265,7 @@ impl Instance {
         Ok(())
     }
 
-    pub fn new_connection(&mut self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
+    pub fn new_connection(&self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
         let mut conn_inner = self.connections.lock()?;
         let mut next_con_id = self.next_con_id.lock()?;
         let old_next_con_id = *next_con_id;
@@ -281,18 +276,18 @@ impl Instance {
         Ok(old_next_con_id)
     }
 
-    pub fn connection_set_namespace(&mut self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
+    pub fn connection_set_namespace(&self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
         let mut connection = self.get_connection(conn_id)?;
         connection.ns = Some(namespace);
         self.set_connection(conn_id, connection);
         Ok(())
     }
 
-    pub(crate) fn got_msg(&mut self, msg: MizeMessage) -> MizeResult<()> {
+    pub(crate) fn got_msg(&self, msg: MizeMessage) -> MizeResult<()> {
         Ok(self.op_tx.send(Operation::Msg(msg))?)
     }
 
-    fn set_connection(&mut self, conn_id: u64, new_connection: Connection) -> MizeResult<()> {
+    fn set_connection(&self, conn_id: u64, new_connection: Connection) -> MizeResult<()> {
         let mut conn_inner = self.connections.lock()?;
 
         for connection in conn_inner.iter_mut() {
@@ -368,7 +363,7 @@ impl Instance {
         runtime_inner.spawn(func);
     }
     #[cfg(feature = "async")]
-    pub fn async_get_handle(&mut self) -> Handle {
+    pub fn async_get_handle(&self) -> Handle {
         let runtime_inner = self.runtime.lock().unwrap();
         let handle = runtime_inner.handle().to_owned();
         handle

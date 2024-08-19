@@ -16,10 +16,10 @@ pub enum Operation {
     Msg(MizeMessage),
 }
 
-pub fn updater_thread(operation_rx : Receiver<Operation>, mut instance: Instance) -> MizeResult<()> {
+pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -> MizeResult<()> {
     for mut operation in operation_rx {
         trace!("OPERATION");
-        let result = handle_operation(&mut operation, &mut instance);
+        let result = handle_operation(&mut operation, instance);
 
         if let Err(err) = result {
             error!("OPERATION FAILED: {:?}", operation);
@@ -29,7 +29,7 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, mut instance: Instance
     Ok(())
 }
 
-fn handle_operation(operation: &mut Operation, instance: &mut Instance) -> MizeResult<()> {
+fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
     match operation {
         Operation::Set(id, value) => {
             let item_data: ItemData = value.to_owned();
@@ -43,8 +43,7 @@ fn handle_operation(operation: &mut Operation, instance: &mut Instance) -> MizeR
     Ok(())
 }
 
-fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> {
-    println!("got msg: {}", msg);
+fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
     match msg.cmd()? {
         MessageCmd::Get => {
             let id = msg.id(instance)?;
@@ -74,9 +73,10 @@ fn handle_msg(msg: &mut MizeMessage, instance: &mut Instance) -> MizeResult<()> 
         },
 
         MessageCmd::Create => {
+            println!("instance.store: {:?}", instance.clone().store);
             let item = instance.new_item()?;
-            let reply_msg = MizeMessage::new_create_reply(item.id());
-            let connection = instance.get_connection(msg.conn_id)?;
+            let reply_msg = MizeMessage::new_create_reply(item.id(), msg.conn_id);
+            let mut connection = instance.get_connection(msg.conn_id)?;
             connection.send(reply_msg)?;
         }
 

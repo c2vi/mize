@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::iter::Map;
 use std::option::Iter;
 use dyn_clone::DynClone;
@@ -11,7 +12,7 @@ use crate::item::get_raw_from_cbor;
 
 dyn_clone::clone_trait_object!(Store);
 
-pub trait Store: DynClone + Send + Sync {
+pub trait Store: DynClone + Send + Sync + Debug {
     // should have the ability to be multi threaded, if the underlying implementation supports 
     // multithreaded IO operations
     // for now all refs to a store hold a Mutex but this mutex is part of where the MizeStore trait

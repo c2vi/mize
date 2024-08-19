@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use ciborium::{value::Integer, Value as CborValue};
 
-use crate::{error::{MizeError, MizeResult}, id::MizeId, instance::{self, connection::Connection, Instance}, item::{IntoItemData, ItemData}};
+use crate::{error::{IntoMizeResult, MizeError, MizeResult}, id::MizeId, instance::{self, connection::Connection, Instance}, item::{IntoItemData, ItemData}};
 
 #[derive(Clone)]
 pub struct MizeMessage {
@@ -56,6 +56,16 @@ impl MizeMessage {
     pub fn new_create(conn_id: u64) -> MizeMessage {
         let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_CREATE.into()));
         let value = CborValue::Map(vec![cmd]);
+
+        MizeMessage::new(value, conn_id)
+    }
+
+    pub fn new_create_reply(id: MizeId, conn_id: u64) -> MizeMessage {
+        let id_path = id.path().into_iter().map(|string| CborValue::Text(string.to_owned())).collect();
+
+        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_CREATE_REPLY.into()));
+        let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
+        let value = CborValue::Map(vec![cmd, id]);
 
         MizeMessage::new(value, conn_id)
     }
@@ -167,7 +177,7 @@ impl MizeMessage {
         Ok(vec_string)
     }
 
-    pub fn id(&mut self, instance: &mut Instance) -> MizeResult<MizeId> {
+    pub fn id(&mut self, instance: &Instance) -> MizeResult<MizeId> {
         let id_str = self.id_str()?;
         return instance.new_id(id_str);
     }
@@ -220,28 +230,52 @@ impl<'a, 'b> io::Write for DisplayWriter<'a, 'b> {
 impl fmt::Display for MizeMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
+        let mut err = false;
 
-        if let Ok(cmd) = self.to_owned().cmd() {
-            writeln!(f, "MizeMessage with cmd: {:?}", cmd);
-        } else {
-            writeln!(f, "MizeMessage with unparsable cmd");
-        };
-
-        if let Ok(id) = self.to_owned().id_str() {
-            let id_str = id.join("/");
-            writeln!(f, "\tid: {}", id_str);
-        } else {
-            writeln!(f, "id: parsing error");
+        match self.to_owned().cmd() {
+            Ok(cmd) => {
+                writeln!(f, "MizeMessage with cmd: {:?}", cmd);
+            },
+            Err(e) => {
+                writeln!(f, "MizeMessage with unparsable cmd");
+                err = true;
+            }
         }
 
-        if let Ok(data) = self.to_owned().data() {
-            let value = data.cbor();
-            write!(f, "\tdata: ");
+        match self.to_owned().id_str() {
+            Ok(id) => {
+                let id_str = id.join("/");
+                writeln!(f, "\tid: {:?}", id_str);
+            },
+            Err(e) => {
+                writeln!(f, "\t msg has no id");
+                //err = true;
+            }
+        }
+
+        match self.to_owned().data() {
+            Ok(data) => {
+                let value = data.cbor();
+                write!(f, "\tdata: ");
+                let display_writer = DisplayWriter (f);
+                if let Err(e) = value.serialize(&mut serde_json::Serializer::pretty(display_writer))
+                    .map_err(|serde_err| std::fmt::Error) {
+                        writeln!(f, "serialize err: {:?}", e);
+                        err = true;
+                }
+            },
+            Err(e) => {
+                writeln!(f, "\t msg has no data");
+                //err = true;
+            },
+        }
+
+        if err {
+            write!(f, "Full msg: ");
             let display_writer = DisplayWriter (f);
-            value.serialize(&mut serde_json::Serializer::pretty(display_writer))
-                .map_err(|serde_err| std::fmt::Error)?
-        } else {
-            writeln!(f, "\tdata: unparsable");
+            self.value.serialize(&mut serde_json::Serializer::pretty(display_writer))
+                .map_err(|serde_err| std::fmt::Error).mize_result_msg("serialize error")
+                .inspect_err(|e| { e.clone().log(); });
         }
 
         Ok(())

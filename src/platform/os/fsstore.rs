@@ -15,7 +15,7 @@ use crate::core::id::MizeId;
 use crate::item::get_raw_from_cbor;
 use crate::instance::Instance;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FileStore {
     path: PathBuf,
 }
@@ -61,6 +61,7 @@ impl Store for FileStore {
             .parse()
             .mize_result_msg(format!("could not parse next_id at '{}' to u64", self.path.display()))?;
 
+        println!("nextid fsstore: {}", next_id);
         let id_string = format!("{}", next_id);
 
         next_id += 1;
