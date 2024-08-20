@@ -216,16 +216,18 @@ impl MizeMessage {
 
         let data = {
             let mut tmp_val = &CborValue::Null;
+            let mut found = false;
             for (key, val) in msg_as_map {
                 if let CborValue::Integer(key_int) = key {
                     // number three indicates the data field
                     let three: Integer = 3.into();
                     if key_int == &three {
                         tmp_val = val;
+                        found = true;
                     }
                 }
             }
-            if tmp_val == &CborValue::Null {
+            if ! found {
                 return Err(MizeError::new().msg("error getting the data value form a msg"));
             }
             tmp_val

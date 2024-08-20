@@ -20,8 +20,6 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
     let mut count = 0;
 
     loop {
-        println!("updater_thread loop beginning: {}", operation_rx.len());
-
         let mut operation = operation_rx.recv()?;
         trace!("OPERATION {}", count);
 
