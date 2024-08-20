@@ -17,14 +17,27 @@ pub enum Operation {
 }
 
 pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -> MizeResult<()> {
-    for mut operation in operation_rx {
-        trace!("OPERATION");
+    let mut count = 0;
+
+    loop {
+        println!("updater_thread loop beginning: {}", operation_rx.len());
+
+        let mut operation = operation_rx.recv()?;
+        trace!("OPERATION {}", count);
+
+        //let mut busy = instance.update_thread_busy.lock()?;
+
         let result = handle_operation(&mut operation, instance);
+
+        trace!("OPERATION DONE {}", count);
+        count += 1;
 
         if let Err(err) = result {
             error!("OPERATION FAILED: {:?}", operation);
             err.log();
         }
+
+        //drop(busy);
     }
     Ok(())
 }
@@ -54,6 +67,14 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
         },
 
         MessageCmd::Update => {
+            let data = msg.data()?;
+            let id = msg.id(instance)?;
+            instance.set(id, data);
+        },
+
+        // this should check, if the update is valid
+        // but for now, we do just always accept it
+        MessageCmd::UpdateRequest => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
             instance.set(id, data);

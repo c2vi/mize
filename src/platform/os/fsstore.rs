@@ -42,7 +42,9 @@ impl FileStore {
         }
 
         // init the store
-        fs::write(path.join("next_id"), "1");
+        if !path.join("next_id").exists() {
+            fs::write(path.join("next_id"), "1");
+        }
 
         Ok(FileStore { path: Path::new(&path).to_owned() })
     }
@@ -110,6 +112,9 @@ impl Store for FileStore {
     fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData> {
         let file_path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
         println!("file_path: {:?}", file_path.display());
+        if !file_path.exists() {
+            return Ok(ItemData::empty());
+        }
         let file = OpenOptions::new().read(true).open(file_path)?;
 
         let cbor_value: CborValue = ciborium::from_reader(file)

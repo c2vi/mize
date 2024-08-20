@@ -164,6 +164,7 @@ fn cli_matches() -> clap::ArgMatches {
                 Command::new("set")
                 .aliases(["s"])
                 .arg(Arg::new("id").help("The id or path to set"))
+                .arg(Arg::new("value").help("The value to set the path to"))
             )
         .subcommand(
                 Command::new("show")

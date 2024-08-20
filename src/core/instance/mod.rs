@@ -5,7 +5,7 @@ use std::thread::JoinHandle;
 use std::{thread, vec};
 use crossbeam::channel::{self, bounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use tracing::{trace, debug, info, warn, error};
+use tracing::{debug, error, info, trace, warn, Instrument};
 use uuid::Uuid;
 use std::fs::File;
 use colored::Colorize;
@@ -56,11 +56,12 @@ pub struct Instance {
     // the namespace of the instance itself
     // TODO: set to a random uuid
     pub self_namespace: Arc<Mutex<Namespace>>,
-    op_tx: channel::Sender<Operation>,
+    pub op_tx: channel::Sender<Operation>,
     context: Vec<MizeId>,
     threads: Vec<String>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
+    update_thread_busy: Arc<Mutex<bool>>,
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
 }
@@ -95,14 +96,20 @@ impl Instance {
             threads: vec![],
             next_con_id: Arc::new(Mutex::new(1)),
             give_msg_wait, create_msg_wait,
+            update_thread_busy: Arc::new(Mutex::new(false)),
 
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
         };
 
         let instance_clone = instance.clone();
-        let closure = move || updater_thread(op_rx, &instance_clone);
+        let op_rx_clone = op_rx.clone();
+        let closure = move || updater_thread(op_rx_clone, &instance_clone);
         instance.spawn("updater_thread", closure)?;
+
+        let instance_clone_two = instance.clone();
+        let closure_two = move || updater_thread(op_rx, &instance_clone_two);
+        instance.spawn("updater_thread", closure_two)?;
 
         // will probably move the msg stuff into it's own thread
         //let msg_instance_clone = instance.clone();
@@ -259,6 +266,10 @@ impl Instance {
         return Ok(self_namespace_inner.clone());
     }
 
+    pub fn we_are_namespace(&self) -> MizeResult<bool> {
+        Ok(self.get_namespace()? == self.get_self_namespace()?)
+    }
+
     pub fn add_listener<T: ConnListener +'static>(&mut self, listener: T) -> MizeResult<()> {
         let mut instance_clone = self.clone();
         self.spawn("some_listener", move || listener.listen(instance_clone));
@@ -386,6 +397,17 @@ impl Instance {
         loop {
             thread::sleep_ms(10000000)
         }
+    }
+
+    pub fn wait_for_updaater_thread(&self) -> MizeResult<()> {
+        thread::sleep_ms(10000000);
+        return Ok(());
+        while !self.op_tx.is_empty() {
+            thread::sleep_ms(50);
+        }
+        self.update_thread_busy.lock()?;
+        trace!("wait_for_updaater_thread Thread Idle");
+        Ok(())
     }
 }
 

@@ -11,7 +11,7 @@ use std::io;
 use tracing::{span, Level};
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
-use crate::instance::Instance;
+use crate::instance::{connection, Instance};
 use crate::instance::store::Store;
 use crate::id::MizeId;
 use crate::proto::MizeMessage;
@@ -106,14 +106,26 @@ impl Item<'_> {
     }
 
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
-        let store_inner = self.instance.store.lock()?;
-        let mut old_data = store_inner.get_value_data_full(self.id())?;
+
+        println!("before as_data_full: {}", self.instance.op_tx.len());
+        let mut data = self.as_data_full()?;
+        println!("data: {:?}", data);
 
         let new_data = value.into();
 
-        old_data.merge(new_data);
+        data.merge(new_data);
+        println!("new_data: {:?}", data);
 
-        store_inner.set(self.id(), old_data)?;
+        if self.instance.we_are_namespace()? {
+            let store_inner = self.instance.store.lock()?;
+            store_inner.set(self.id(), data);
+        } else {
+            let namespace = self.id().namespace();
+            let mut connection = self.instance.get_connection_by_ns(namespace)?;
+            let msg = MizeMessage::new_update_request(self.id(), data, connection.id);
+            connection.send(msg)?;
+        }
+
         Ok(())
     }
 }
@@ -128,6 +140,10 @@ impl<'a> Display for Item<'a> {
 
 impl ItemData {
     pub fn new() -> ItemData {
+        ItemData(CborValue::Null)
+    }
+
+    pub fn empty() -> ItemData {
         ItemData(CborValue::Null)
     }
 
@@ -417,6 +433,16 @@ impl IntoPath for Vec<&str> {
 impl IntoItemData for &str {
     fn into_item_data(self) -> ItemData {
         ItemData::parse(self)
+    }
+}
+impl IntoItemData for String {
+    fn into_item_data(self) -> ItemData {
+        ItemData(self.into())
+    }
+}
+impl IntoItemData for &String {
+    fn into_item_data(self) -> ItemData {
+        ItemData(self.to_owned().into())
     }
 }
 impl IntoItemData for CborValue {

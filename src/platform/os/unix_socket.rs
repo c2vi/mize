@@ -10,7 +10,7 @@ use tracing::{info, warn};
 use crate::instance::connection::{ConnListener, Connection};
 use crate::instance::{self, Instance};
 use crate::error::{MizeError, MizeResult, IntoMizeResult};
-use crate::proto::MizeMessage;
+use crate::proto::{self, MizeMessage};
 
 pub struct UnixListener {
     sock_path: PathBuf,
@@ -140,6 +140,7 @@ fn unix_incomming(mut unix_read: OwnedReadHalf, mut instance: Instance, conn_id:
         }
         let msg = MizeMessage::new(value, conn_id);
         println!("unix incoming got msg: {}", msg);
+        println!("op channel len: {}", instance.op_tx.len());
         instance.got_msg(msg);
     }
     Ok(())
