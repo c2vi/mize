@@ -30,7 +30,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         Ok(config_file_path) => {
             let config = config_from_file(config_file_path)?;
             debug!("env var MIZE_CONFIG_FILE present");
-            instance.set("0", config)?;
+            instance.set_blocking("0", config)?;
             trace!("config after MIZE_CONFIG_FILE env var: {}", instance.get("0/config")?);
         }
         Err(var_err) => match var_err {
@@ -48,7 +48,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         Ok(config_string) => {
             let config = config_from_string(config_string)?;
             debug!("env var MIZE_CONFIG present");
-            instance.set("0", config)?;
+            instance.set_blocking("0", config)?;
             trace!("config after MIZE_CONFIG env var: {}", instance.get("0/config")?);
         }
         Err(var_err) => match var_err {
@@ -62,6 +62,8 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     };
 
     ////// if a config.store_path is set, upgrade to the filestore there
+    let mut test = instance.get("0")?.as_data_full()?;
+    println!("os::Mod test: {}", test);
     let mut store_path = instance.get("0/config/store_path")?.value_string()?;
 
     if store_path == "" {

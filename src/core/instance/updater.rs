@@ -1,5 +1,7 @@
 use crossbeam::channel::Receiver;
 use tracing::{error, trace, warn};
+use std::borrow::BorrowMut;
+use std::sync::Arc;
 
 use crate::mize_err;
 use crate::{instance::Instance, item::ItemData};
@@ -8,6 +10,7 @@ use crate:: error::{MizeResult, MizeError, MizeResultTrait};
 use crate::proto::{MessageCmd, MizeMessage};
 
 use super::connection::{self, Connection};
+use super::subscription::{Subscription, Update};
 
 
 #[derive(Debug)]
@@ -21,13 +24,18 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
 
     loop {
         let mut operation = operation_rx.recv()?;
-        trace!("OPERATION {}", count);
+        let op_str = match operation {
+            Operation::Set(_, _) => "SET",
+            Operation::Msg(_) => "MSG",
+        };
+
+        trace!("OPERATION {} - {}", count, op_str);
 
         //let mut busy = instance.update_thread_busy.lock()?;
 
         let result = handle_operation(&mut operation, instance);
 
-        trace!("OPERATION DONE {}", count);
+        trace!("OPERATION {} DONE", count);
         count += 1;
 
         if let Err(err) = result {
@@ -40,12 +48,26 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
     Ok(())
 }
 
-fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
+pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
     match operation {
         Operation::Set(id, value) => {
             let item_data: ItemData = value.to_owned();
             let mut item = instance.get(id.clone())?;
             item.merge(item_data)?;
+
+            //check subs and handle them
+            let mut subs_inner = instance.subs.lock()?;
+            println!("goooooooooooooooooot some subs: {:?}", subs_inner);
+            println!("some subs id: {:?}", id);
+            if let Some(vec) = subs_inner.get_mut(&id) {
+                let update = Update {
+                    instance: Arc::new(instance.to_owned()),
+                    id: id.clone(),
+                };
+                for sub in vec.iter_mut() {
+                    sub.handle(update.clone());
+                }
+            }
         },
         Operation::Msg(msg) => {
             handle_msg(msg, instance)?
@@ -64,10 +86,20 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
             connection.send(msg)?;
         },
 
+        MessageCmd::GetSub => {
+            let id = msg.id(instance)?;
+            let mut connection = instance.get_connection(msg.conn_id)?.clone();
+            let item = instance.get(id.clone())?;
+            let msg = MizeMessage::new_give(id.clone(), item.as_data_full()?, msg.conn_id);
+            connection.send(msg)?;
+            let sub = Subscription::from_conn(connection.clone());
+            instance.sub(id, sub)?;
+        },
+
         MessageCmd::Update => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
-            instance.set(id, data);
+            instance.set(id.clone(), data);
         },
 
         // this should check, if the update is valid
@@ -75,7 +107,7 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
         MessageCmd::UpdateRequest => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
-            instance.set(id, data);
+            instance.set(id.clone(), data);
         },
 
         MessageCmd::Give => {

@@ -26,6 +26,7 @@ use crate::proto::MizeMessage;
 use tokio::runtime::Handle;
 
 use self::connection::{ConnListener, Connection};
+use self::updater::handle_operation;
 
 #[cfg(feature = "async")]
 use tokio::runtime::Runtime;
@@ -46,7 +47,7 @@ pub struct Instance {
     pub store: Arc<Mutex<Box<dyn Store>>>,
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
-    subs: Arc<Mutex<HashMap<MizeId, Subscription>>>,
+    subs: Arc<Mutex<HashMap<MizeId, Vec<Subscription>>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
 
@@ -148,8 +149,11 @@ impl Instance {
     pub fn with_config(config: ItemData) -> MizeResult<Instance> {
         trace!("[ {} ] Instance::with_config()", "CALL".yellow());
         trace!("config: {}", config);
+
         let mut instance = Instance::empty()?;
-        instance.set("0", config.clone());
+
+        instance.set_blocking("0", config.clone());
+
         instance.init()?;
 
         Ok(instance)
@@ -209,6 +213,25 @@ impl Instance {
     pub fn set<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
         let id = id.to_mize_id(self)?;
         self.op_tx.send(Operation::Set(id, value.into()));
+        Ok(())
+    }
+    
+    pub fn set_blocking<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
+        handle_operation(&mut Operation::Set(id.to_mize_id(self)?, value.into()), self)?;
+        Ok(())
+    }
+
+    pub fn sub<I: IntoMizeId>(&self, id: I, sub: Subscription) -> MizeResult<()> {
+        let mut subs_inner = self.subs.lock()?;
+        let id = id.to_mize_id(self)?;
+        match subs_inner.get_mut(&id) {
+            Some(vec) => {
+                vec.push(sub);
+            },
+            None => {
+                subs_inner.insert(id, vec![sub]);
+            }
+        }
         Ok(())
     }
 

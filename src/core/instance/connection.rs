@@ -10,7 +10,7 @@ use super::Instance;
 use crate::item::{get_raw_from_cbor, Item, ItemData};
 
 // only created with Instance::new_connection()
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Connection {
     pub tx: Sender<MizeMessage>,
     pub id: u64,
@@ -22,7 +22,7 @@ pub trait ConnListener : Send + Sync {
 }
 
 impl Connection {
-    pub fn send(&mut self, msg: MizeMessage) -> MizeResult<()> {
+    pub fn send(&self, msg: MizeMessage) -> MizeResult<()> {
         Ok(self.tx.send(msg)?)
     }
 }

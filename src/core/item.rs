@@ -107,14 +107,14 @@ impl Item<'_> {
 
     pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
 
-        println!("before as_data_full: {}", self.instance.op_tx.len());
         let mut data = self.as_data_full()?;
-        println!("data: {:?}", data);
+        println!("item::merge data: {:?}", data);
+        println!("item::merge id: {:?}", self.id());
 
         let new_data = value.into();
 
         data.merge(new_data);
-        println!("new_data: {:?}", data);
+        println!("item::merge new_data: {:?}", data);
 
         if self.instance.we_are_namespace()? {
             let store_inner = self.instance.store.lock()?;
