@@ -229,9 +229,17 @@ impl Instance {
                 vec.push(sub);
             },
             None => {
-                subs_inner.insert(id, vec![sub]);
+                subs_inner.insert(id.clone(), vec![sub]);
             }
         }
+
+        // if we are not the owner of this item, send a sub msg to them
+        if !self.we_are_namespace()? {
+            let con = self.get_connection_by_ns(id.namespace())?;
+            let msg = MizeMessage::new_sub(id, con.id);
+            con.send(msg)?;
+        }
+
         Ok(())
     }
 

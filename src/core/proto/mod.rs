@@ -26,6 +26,7 @@ static CMD_CREATE: u16 = 4;
 static CMD_CREATE_REPLY: u16 = 5;
 static CMD_UPDATE_REQUEST: u16 = 6;
 static CMD_GET_SUB: u16 = 7;
+static CMD_SUB: u16 = 8;
 
 #[derive(Debug)]
 pub enum MessageCmd {
@@ -36,6 +37,7 @@ pub enum MessageCmd {
     CreateReply,
     UpdateRequest,
     GetSub,
+    Sub,
 }
 
 
@@ -60,6 +62,16 @@ impl MizeMessage {
         let id_path = id.path().into_iter().map(|string| CborValue::Text(string.to_owned())).collect();
 
         let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_GET_SUB.into()));
+        let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
+        let value = CborValue::Map(vec![cmd, id]);
+
+        MizeMessage::new(value, conn_id)
+    }
+
+    pub fn new_sub(id: MizeId, conn_id: u64) -> MizeMessage {
+        let id_path = id.path().into_iter().map(|string| CborValue::Text(string.to_owned())).collect();
+
+        let cmd = (CborValue::Integer(MSG_CMD.into()), CborValue::Integer(CMD_SUB.into()));
         let id = (CborValue::Integer(MSG_ID.into()), CborValue::Array(id_path));
         let value = CborValue::Map(vec![cmd, id]);
 
@@ -157,6 +169,8 @@ impl MizeMessage {
             4 => MessageCmd::Create,
             5 => MessageCmd::CreateReply,
             6 => MessageCmd::UpdateRequest,
+            7 => MessageCmd::GetSub,
+            8 => MessageCmd::Sub,
             _ => {
                 return Err(MizeError::new().msg("error cmd of msg was not a valid command"));
             },

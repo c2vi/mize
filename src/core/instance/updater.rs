@@ -96,6 +96,13 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
             instance.sub(id, sub)?;
         },
 
+        MessageCmd::Sub => {
+            let id = msg.id(instance)?;
+            let mut connection = instance.get_connection(msg.conn_id)?.clone();
+            let sub = Subscription::from_conn(connection.clone());
+            instance.sub(id, sub)?;
+        },
+
         MessageCmd::Update => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
