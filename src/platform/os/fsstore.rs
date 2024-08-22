@@ -51,7 +51,9 @@ impl FileStore {
 
     pub fn store_is_opened(store_path: String) -> MizeResult<bool> {
         println!("valid_pid_file: {}", valid_pid_file(Path::new(&store_path))?.is_some());
-        Ok(valid_pid_file(Path::new(&store_path))?.is_some())
+        let res = valid_pid_file(Path::new(&store_path))?.is_some();
+        println!("after fn");
+        Ok(res)
     }
 }
 
@@ -113,7 +115,7 @@ impl Store for FileStore {
         let file_path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
         println!("file_path: {:?}", file_path.display());
         if !file_path.exists() {
-            return Ok(ItemData::empty());
+            
         }
         let file = OpenOptions::new().read(true).open(file_path)?;
 
@@ -155,10 +157,7 @@ fn valid_pid_file(path: &Path) -> MizeResult<Option<u32>> {
         .parse()
         .mize_result_msg(format!("Could not parse contents of pid file at '{}' to u32", pid_file_path.display()))?;
 
-    let refresh_kind = RefreshKind::new().with_processes(ProcessRefreshKind::everything());
-    let system = sysinfo::System::new_with_specifics(refresh_kind);
-
-    if let Some(_) = system.process(Pid::from(pid as usize)) {
+    if Path::new("/proc").join(format!("{}", pid)).exists() {
         return Ok(Some(pid));
     } else {
         return Ok(None);
