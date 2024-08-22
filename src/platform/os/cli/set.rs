@@ -20,9 +20,7 @@ pub fn set(sub_matches: &ArgMatches) -> MizeResult<()> {
     let value = sub_matches.get_one::<String>("value")
         .ok_or(MizeError::new().msg("No value Argument specified"))?;
 
-    instance.set(id, value.into_item_data())?;
-
-    instance.wait_for_updaater_thread()?;
+    instance.set_blocking(id, value.into_item_data())?;
 
     Ok(())
 }
