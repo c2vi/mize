@@ -50,9 +50,7 @@ impl FileStore {
     }
 
     pub fn store_is_opened(store_path: String) -> MizeResult<bool> {
-        println!("valid_pid_file: {}", valid_pid_file(Path::new(&store_path))?.is_some());
         let res = valid_pid_file(Path::new(&store_path))?.is_some();
-        println!("after fn");
         Ok(res)
     }
 }
@@ -65,7 +63,6 @@ impl Store for FileStore {
             .parse()
             .mize_result_msg(format!("could not parse next_id at '{}' to u64", self.path.display()))?;
 
-        println!("nextid fsstore: {}", next_id);
         let id_string = format!("{}", next_id);
 
         next_id += 1;
@@ -76,9 +73,7 @@ impl Store for FileStore {
     }
 
     fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
-        println!("setting: {:?}", id);
         let path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
-        println!("path: {:?}", &path);
         fs::create_dir_all(self.path.join("store").join(id.namespace_str()))?;
 
         let file = OpenOptions::new().write(true).create(true).open(path)?;
@@ -113,7 +108,6 @@ impl Store for FileStore {
 
     fn get_value_data_full(&self, id: MizeId) -> MizeResult<ItemData> {
         let file_path = self.path.join("store").join(id.namespace_str()).join(id.store_part());
-        println!("file_path: {:?}", file_path.display());
         if !file_path.exists() {
             
         }

@@ -57,8 +57,6 @@ pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeR
 
             //check subs and handle them
             let mut subs_inner = instance.subs.lock()?;
-            println!("goooooooooooooooooot some subs: {:?}", subs_inner);
-            println!("some subs id: {:?}", id);
             if let Some(vec) = subs_inner.get_mut(&id) {
                 let update = Update {
                     instance: Arc::new(instance.to_owned()),

@@ -1277,6 +1277,7 @@ dependencies = [
  "tokio-io",
  "toml",
  "tracing",
+ "tracing-core",
  "tracing-subscriber",
  "uuid",
  "wasm-bindgen",

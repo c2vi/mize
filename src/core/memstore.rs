@@ -44,14 +44,14 @@ impl Store for MemStore {
         Ok(Vec::new())
     }
     fn new_id(&self) -> MizeResult<String> {
-        println!("are we hereeeeeee memstore new_get");
         let mut inner = self.inner.lock()?;
 
         let id_string = format!("{}", inner.next_id);
         inner.next_id += 1;
         return Ok(id_string);
     }
-    #[instrument(name="MemStore::get_value_raw" skip(self))]
+
+    #[instrument(name="fn.MemStore::get_value_raw" skip(self))]
     fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>> {
     trace!("[ {} ] id: {:?}", "ARG".yellow(), id);
         let inner = self.inner.lock()?;
@@ -90,7 +90,6 @@ impl Store for MemStore {
     }
 
     fn next_id(&self, prev_id_str: &str) -> MizeResult<Option<String>> {
-        println!("next_id: prev_id_str: {}", prev_id_str);
         let inner = self.inner.lock()?;
 
         let mut id = str_to_u64(prev_id_str)?;

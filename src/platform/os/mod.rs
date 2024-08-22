@@ -63,7 +63,6 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
     ////// if a config.store_path is set, upgrade to the filestore there
     let mut test = instance.get("0")?.as_data_full()?;
-    println!("os::Mod test: {}", test);
     let mut store_path = instance.get("0/config/store_path")?.value_string()?;
 
     if store_path == "" {

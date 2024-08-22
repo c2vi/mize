@@ -58,6 +58,7 @@ dyn-clone = "1.0.17"
 tokio-core = "0.1.18"
 tokio-io = "0.1.13"
 ciborium-io = "0.2.2"
+tracing-core = "0.1.32"
 
 #tokio-stream = { version = "0.1.9", optional = true }
 #derive_more = "0.99.17"

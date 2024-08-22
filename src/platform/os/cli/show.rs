@@ -18,11 +18,11 @@ pub fn show(sub_matches: &ArgMatches) -> MizeResult<()> {
     let sub = Subscription::from_sender(tx);
     instance.sub(id, sub)?;
 
-    println!("ItemData: {}", item.as_data_full()?);
+    println!("item: {}", item.as_data_full()?);
 
     for update in rx {
         println!("####### GOT UPDATE #######");
-        println!("ItemData: {}", update.new_item()?.as_data_full()?);
+        println!("item: {}", update.new_item()?.as_data_full()?);
     }
 
     Ok(())

@@ -5,7 +5,7 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::io::{Interest, AsyncReadExt, AsyncWriteExt};
 use crossbeam::channel::{Receiver, Sender, unbounded};
 use ciborium::Value as CborValue;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 use crate::instance::connection::{ConnListener, Connection};
 use crate::instance::{self, Instance};
@@ -122,7 +122,7 @@ async fn unix_listen(listener: UnixListener, mut instance: Instance) -> MizeResu
 
 fn unix_outgoing(mut unix_write: OwnedWriteHalf, send_rx: Receiver<MizeMessage>, mut instance: Instance, conn_id: u64) -> MizeResult<()> {
     for msg in send_rx {
-        println!("unix outgoing got msg: {}", msg);
+        debug!("unix outgoing got msg: {}", msg);
         let adapter = MyCiboriumWriter { inner: &mut unix_write, instance: &mut instance };
         let value = msg.value();
         ciborium::into_writer(&value, adapter)?
@@ -139,8 +139,7 @@ fn unix_incomming(mut unix_read: OwnedReadHalf, mut instance: Instance, conn_id:
             break;
         }
         let msg = MizeMessage::new(value, conn_id);
-        println!("unix incoming got msg: {}", msg);
-        println!("op channel len: {}", instance.op_tx.len());
+        debug!("unix incoming got msg: {}", msg);
         instance.got_msg(msg);
     }
     Ok(())

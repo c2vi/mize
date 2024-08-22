@@ -160,7 +160,7 @@ impl Instance {
     }
 
     pub fn migrate_to_store(&self, new_store: Box<dyn Store>) -> MizeResult<()> {
-        println!("MIGRATING");
+        info!("MIGRATING");
         let mut old_store = self.store.lock()?;
 
         let id = self.id_from_string("0".to_owned())?;

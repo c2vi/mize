@@ -1,6 +1,7 @@
 use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 use serde::Serialize;
 use core::fmt;
+use std::fmt::Debug;
 use std::{i128, string};
 use std::{collections::HashMap, path::PathBuf, io::Cursor, fmt::Display};
 use std::fs::File;
@@ -105,16 +106,17 @@ impl Item<'_> {
         }
     }
 
-    pub fn merge<V: Into<ItemData>>(&mut self, mut value: V) -> MizeResult<()> {
+    #[instrument(name = "fn.ItemData::merge")]
+    pub fn merge<V: Into<ItemData> + Debug >(&mut self, mut value: V) -> MizeResult<()> {
 
         let mut data = self.as_data_full()?;
-        println!("item::merge data: {:?}", data);
-        println!("item::merge id: {:?}", self.id());
+        trace!("item::merge data: {:?}", data);
+        trace!("item::merge id: {:?}", self.id());
 
         let new_data = value.into();
 
         data.merge(new_data);
-        println!("item::merge new_data: {:?}", data);
+        trace!("item::merge new_data: {:?}", data);
 
         if self.instance.we_are_namespace()? {
             let store_inner = self.instance.store.lock()?;
@@ -212,7 +214,6 @@ pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&Cb
                 //println!("path_el: {}", path_el);
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
-                        println!("setting sub_data to: {:?}", val);
                         sub_data = val;
                     }
                 }
@@ -332,7 +333,7 @@ pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
     }
 }
 
-#[instrument]
+#[instrument(name = "fn.get_raw_from_cbor")]
 pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeResult<&'a [u8]> {
     trace!("[ {} ] value: {:?}", "ARG".yellow(), value);
     trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
