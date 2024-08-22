@@ -15,7 +15,7 @@ use super::subscription::{Subscription, Update};
 
 #[derive(Debug)]
 pub enum Operation {
-    Set(MizeId, ItemData),
+    Set(MizeId, ItemData, Option<Connection>), // bool: is_from_update_msg
     Msg(MizeMessage),
 }
 
@@ -25,7 +25,7 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
     loop {
         let mut operation = operation_rx.recv()?;
         let op_str = match operation {
-            Operation::Set(_, _) => "SET",
+            Operation::Set(_, _, _) => "SET",
             Operation::Msg(_) => "MSG",
         };
 
@@ -50,7 +50,7 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
 
 pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
     match operation {
-        Operation::Set(id, value) => {
+        Operation::Set(id, value, maybe_conn) => {
             let item_data: ItemData = value.to_owned();
             let mut item = instance.get(id.clone())?;
             item.merge(item_data)?;
@@ -65,6 +65,17 @@ pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeR
                     id: id.clone(),
                 };
                 for sub in vec.iter_mut() {
+
+                    // don't handle sub of type connection, in case the update comes from  this
+                    // connection
+                    if let Some(conn) = maybe_conn {
+                        if let Subscription::Connection(conn2) = sub {
+                            if conn.id == conn2.id {
+                                continue;
+                            }
+                        }
+                    }
+
                     sub.handle(update.clone());
                 }
             }
@@ -106,7 +117,8 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
         MessageCmd::Update => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
-            instance.set(id.clone(), data);
+            let connection = instance.get_connection(msg.conn_id)?;
+            instance.op_tx.send(Operation::Set(id.clone(), data, Some(connection)));
         },
 
         // this should check, if the update is valid
@@ -114,7 +126,8 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
         MessageCmd::UpdateRequest => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
-            instance.set(id.clone(), data);
+            let connection = instance.get_connection(msg.conn_id)?;
+            instance.op_tx.send(Operation::Set(id.clone(), data, Some(connection)));
         },
 
         MessageCmd::Give => {

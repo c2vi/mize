@@ -212,12 +212,12 @@ impl Instance {
 
     pub fn set<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
         let id = id.to_mize_id(self)?;
-        self.op_tx.send(Operation::Set(id, value.into()));
+        self.op_tx.send(Operation::Set(id, value.into(), None));
         Ok(())
     }
     
     pub fn set_blocking<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
-        handle_operation(&mut Operation::Set(id.to_mize_id(self)?, value.into()), self)?;
+        handle_operation(&mut Operation::Set(id.to_mize_id(self)?, value.into(), None), self)?;
         Ok(())
     }
 
