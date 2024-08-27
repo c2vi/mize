@@ -316,7 +316,7 @@ impl MinimalTracer {
     pub fn register() -> Result<(), tracing::subscriber::SetGlobalDefaultError> {
         let mut enabled = true;
         let mut span_names_to_enable = Vec::new();
-        let mut my_level = Level::INFO;
+        let mut my_level = Level::ERROR;
 
         let mut filters: Vec<LogFilter> = Vec::with_capacity(10);
         if let Ok(env_value) = env::var("RUST_LOG") {

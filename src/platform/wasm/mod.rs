@@ -2,6 +2,9 @@ mod utils;
 
 use wasm_bindgen::prelude::*;
 
+use crate::instance::Instance;
+use crate::error::MizeResult;
+
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
 #[cfg(feature = "wee_alloc")]
@@ -16,4 +19,11 @@ extern {
 #[wasm_bindgen]
 pub fn greet() {
     alert("Hello, wasm-game-of-life!");
+}
+
+pub fn wasm_instance_init(instance: &mut Instance) -> MizeResult<()> {
+    println!("Hello world from wasm_instance_init!!!!!!!!!!");
+    alert("Hello world from wasm_instance_init!!!!!!!!!!");
+
+    Ok(())
 }

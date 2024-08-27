@@ -1,6 +1,5 @@
 use core::fmt;
 use std::io;
-use nix::libc::CTRL_CMD_UNSPEC;
 use serde::Serialize;
 
 use ciborium::{value::Integer, Value as CborValue};

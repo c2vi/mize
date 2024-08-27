@@ -1,7 +1,6 @@
 use core::fmt;
 use std::collections::HashMap;
 use std::fs::create_dir;
-use std::thread::JoinHandle;
 use std::{thread, vec};
 use crossbeam::channel::{self, bounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -23,20 +22,24 @@ use crate::memstore::MemStore;
 use crate::instance::updater::Operation;
 use crate::mize_err;
 use crate::proto::MizeMessage;
-use tokio::runtime::Handle;
 
 use self::connection::{ConnListener, Connection};
 use self::updater::handle_operation;
 
 #[cfg(feature = "async")]
 use tokio::runtime::Runtime;
+#[cfg(feature = "async")]
+use tokio::runtime::Handle;
+
 use core::future::Future;
+use std::thread::JoinHandle;
 
 pub mod connection;
 pub mod store;
 pub mod subscription;
 pub mod updater;
 pub mod msg_thread;
+pub mod module;
 
 static MSG_CHANNEL_SIZE: usize = 200;
 
@@ -136,9 +139,7 @@ impl Instance {
     fn init(&mut self) -> MizeResult<()> {
 
         // platform specific init code
-        if cfg!(feature = "os-target") { // on os platforms
-            crate::platform::os::os_instance_init(self)?
-        }
+        crate::platform::any::instance_init(self);
 
         // end of platform specific init code
 

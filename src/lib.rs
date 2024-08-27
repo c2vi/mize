@@ -22,8 +22,16 @@ pub mod platform {
     #[cfg(feature = "wasm-target")]
     pub mod wasm;
 
-    //#[cfg(feature = "os-target")]
+    #[cfg(feature = "os-target")]
     pub mod os;
+
+    pub mod any {
+        #[cfg(feature = "wasm-target")]
+        pub use super::wasm::wasm_instance_init as instance_init;
+
+        #[cfg(feature = "os-target")]
+        pub use super::os::os_instance_init as instance_init;
+    }
 }
 
 
