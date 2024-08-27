@@ -7,3 +7,6 @@
 [submodule "first-render"]
 	path = first-render
 	url = https://github.com/sewimoser/mize-first-js-render.git
+[submodule "modules"]
+	path = modules
+	url = git@github.com:c2vi/mize-modules.git
