@@ -15,7 +15,10 @@ mod core {
 }
 
 pub use core::*;
-
+pub use core::instance::module::Module;
+pub use core::instance::Instance;
+pub use core::error::MizeError;
+pub use core::error::MizeResult;
 
 // platform specific stuff
 pub mod platform {
@@ -31,8 +34,24 @@ pub mod platform {
 
         #[cfg(feature = "os-target")]
         pub use super::os::os_instance_init as instance_init;
+
+        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        pub use super::super::instance_init;
+
+
+        #[cfg(feature = "os-target")]
+        pub use super::os::load_module;
+
+        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        pub use super::super::load_module;
+
     }
 }
 
+
+pub fn instance_init(instance: &mut core::instance::Instance) {}
+
+
+pub fn load_module(instance: &mut core::instance::Instance, name: &str) -> MizeResult<()> { Ok(()) }
 
 

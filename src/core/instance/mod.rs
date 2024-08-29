@@ -20,7 +20,7 @@ use crate::instance::subscription::Subscription;
 use crate::item::{Item, ItemData};
 use crate::memstore::MemStore;
 use crate::instance::updater::Operation;
-use crate::mize_err;
+use crate::{mize_err, Module};
 use crate::proto::MizeMessage;
 
 use self::connection::{ConnListener, Connection};
@@ -51,6 +51,7 @@ pub struct Instance {
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Vec<Subscription>>>>,
+    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send>>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
 
@@ -96,6 +97,7 @@ impl Instance {
             connections, subs, id_pool,
             namespace, self_namespace, op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
+            modules: Arc::new(Mutex::new(HashMap::new())),
             context: vec![],
             threads: vec![],
             next_con_id: Arc::new(Mutex::new(1)),
@@ -115,7 +117,8 @@ impl Instance {
         let closure_two = move || updater_thread(op_rx, &instance_clone_two);
         instance.spawn("updater_thread", closure_two)?;
 
-        // will probably move the msg stuff into it's own thread
+        // will move the msg stuff into it's own thread
+        // like this it can deadlock.... if a msg waits on an operation to complete
         //let msg_instance_clone = instance.clone();
         //let msg_closure = move || msg_thread(op_rx, instance_clone);
         //instance.spawn("msg_thread", closure)?;
@@ -142,6 +145,16 @@ impl Instance {
         crate::platform::any::instance_init(self);
 
         // end of platform specific init code
+        self.load_module("Blob")?;
+
+        let mut modules_inner = self.modules.lock()?;
+
+        let module = modules_inner.get_mut("Blob").unwrap();
+
+        println!("right before segfault");
+        module.init(&self);
+
+        //self.load_module("String")?;
 
         debug!("INSTANCE INIT DONE");
         Ok(())
@@ -273,6 +286,11 @@ impl Instance {
         trace!("new MizeId made: {:?}", id);
 
         Ok(id)
+    }
+
+    pub fn load_module(&mut self, name: &str) -> MizeResult<()> {
+        // platform specific init code
+        crate::platform::any::load_module(self, name)
     }
 
     pub fn namespace_from_string(&self, ns_str: String) -> MizeResult<Namespace> {

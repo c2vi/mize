@@ -1,5 +1,5 @@
 
 [config]
 namespace = "test.c2vi.dev"
+module_dir = "/home/me/work/mize/modules"
 test = "hello from test item"
-store_path = "/home/me/.mize"

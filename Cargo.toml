@@ -17,7 +17,7 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
-os-target = [ "clap", "home", "daemonize", "nix", "toml", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter"]
+os-target = [ "clap", "home", "daemonize", "nix", "toml", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter", "libloading" ]
 wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 async = ["tokio/net", "tokio", "tokio/rt-multi-thread", "tokio/io-util"]
 
@@ -33,6 +33,9 @@ tracing = "0.1.40"
 serde_json = { version = "1.0.117", optional = false }
 crossbeam = "0.8.4"
 
+# buildin modules
+#mize_module_blob = { path = "./modules/modules/Blob" }
+
 # wasm dependencies
 wasm-bindgen = { version = "0.2.84", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
@@ -47,6 +50,7 @@ toml = { version = "0.8.13", features = ["parse"], optional = true }
 sysinfo = { version = "0.30.12", optional = true }
 tracing-subscriber = { version = "0.3.18", optional = true }
 tokio = { version = "1.21.0", features = ["sync"], optional = true }
+libloading = { version = "0.8.5", optional = true }
 
 # bare dependencies
 

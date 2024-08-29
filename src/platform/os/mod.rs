@@ -5,6 +5,7 @@ use std::fs;
 use tracing::{debug, error, info, trace, warn};
 use clap::ArgMatches;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 
 use crate::id::MizeId;
 use crate::instance::store::Store;
@@ -12,8 +13,9 @@ use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::item::{ItemData, IntoItemData};
 use crate::memstore::MemStore;
-use crate::mize_err;
+use crate::{mize_err, Module};
 use crate::platform::os::unix_socket::UnixListener;
+use crate::instance::module::EmptyModule;
 
 use self::fsstore::FileStore;
 
@@ -63,17 +65,17 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
     ////// if a config.store_path is set, upgrade to the filestore there
     let mut test = instance.get("0")?.as_data_full()?;
-    let mut store_path = instance.get("0/config/store_path")?.value_string()?;
-
-    if store_path == "" {
-        let home_dir = env!("HOME");
-        if home_dir == "" {
-            return Err(mize_err!("env var $HOME empty"));
-        }
-
-        // the default store_path: $HOME/.mize
-        store_path = home_dir.to_owned() + "/.mize";
-    }
+    let mut store_path = match instance.get("0/config/store_path")?.value_string() {
+        Ok(path) => path,
+        Err(e) => {
+            // the default store_path: $HOME/.mize
+            let home_dir = env!("HOME");
+            if home_dir == "" {
+                return Err(mize_err!("env var $HOME empty"));
+            }
+            home_dir.to_owned() + "/.mize"
+        },
+    };
 
     if FileStore::store_is_opened(store_path.to_owned())? {
         // if the store is already opened, connect to the instance, that opened it and join
@@ -89,6 +91,62 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
         let path = Path::new(&store_path).to_owned();
         instance.add_listener(UnixListener::new(path)?)?;
+    }
+
+    Ok(())
+}
+
+pub fn seconds_since_modification(path: &Path) -> u64 {
+    let metadata = match fs::metadata(path) {
+        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
+        Ok(data) => data,
+    };
+
+    let modified = match metadata.modified() {
+        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
+        Ok(data) => data,
+    };
+
+    let duration = match modified.duration_since(UNIX_EPOCH) {
+        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
+        Ok(data) => data,
+    };
+
+    duration.as_secs()
+}
+
+pub fn load_module(instance: &mut Instance, name: &str) -> MizeResult<()> {
+
+    let module_dir_str = instance.get("0/config/module_dir")?.value_string()?;
+    let module_dir = Path::new(&module_dir_str);
+
+    let release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("libmize_module_{}.so", name));
+    let debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("libmize_module_{}.so", name));
+
+    let module_path = match seconds_since_modification(&release_path) > seconds_since_modification(&debug_path) {
+        true => debug_path,
+        false => release_path,
+    };
+
+    let lib = unsafe { libloading::Library::new(module_path)? };
+
+    let func: libloading::Symbol<unsafe extern "C" fn(&mut Box<dyn Module + Send + Sync>) -> ()> = unsafe { lib.get(format!("get_mize_module_{}", name).as_bytes())? };
+
+    let mut module: Box<dyn Module + Send + Sync> = Box::new(EmptyModule {});
+
+    unsafe { func(&mut module) };
+
+
+    let mut modules_inner = instance.modules.lock()?;
+
+    module.init(&instance);
+
+    modules_inner.insert(name.to_owned(), module);
+
+    unsafe {
+        // dropping the lib, would (i suspect) free all memory, of the library's code, which would
+        // make the module's vtable point into empty memory
+        std::mem::forget(lib);
     }
 
     Ok(())
