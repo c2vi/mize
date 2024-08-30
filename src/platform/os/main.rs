@@ -20,29 +20,7 @@ use crate::logging::init_logger;
 
 use tracing::{trace, debug, info, warn, error};
 
-mod cli {
-    pub mod run;
-    pub mod stop;
-    pub mod get;
-    pub mod set;
-    pub mod show;
-    pub mod mount;
-    pub mod call;
-    pub mod create;
-    pub mod is_running;
-
-
-    pub use run::run;
-    pub use stop::stop;
-    pub use get::get;
-    pub use set::set;
-    pub use show::show;
-    pub use create::create;
-    pub use mount::mount;
-    pub use call::call;
-    pub use is_running::is_running;
-}
-
+mod cli;
 mod logging;
 
 static APPNAME: &str = "mize";
@@ -84,6 +62,9 @@ fn main() {
 
         // mi create
         Some(("create", sub_matches)) => cli::create(sub_matches),
+
+        // mi gui
+        Some(("gui", sub_matches)) => cli::gui(sub_matches),
 
         // some unknown command passed
         Some((cmd, sub_matches)) => Err(MizeError::new().msg(format!("The subcommand: {} is not known. use --help to list availavle commands", cmd))),
@@ -182,6 +163,10 @@ fn cli_matches() -> clap::ArgMatches {
         .subcommand(
                 Command::new("is-running")
                 .aliases(["isr"])
+            )
+        .subcommand(
+                Command::new("gui")
+                .aliases(["g"])
             )
         .arg_required_else_help(true);
 
