@@ -10,4 +10,4 @@
 [submodule "modules"]
 	active = false
 	path = modules
-	url = git@github.com:c2vi/mize-modules.git
+	url = https://github.com/c2vi/mize-modules.git
