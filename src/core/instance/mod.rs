@@ -43,6 +43,8 @@ pub mod module;
 
 static MSG_CHANNEL_SIZE: usize = 200;
 
+static BUILD_TIME_CONFIG: &str = include_str!(std::env!("MIZE_BUILD_CONFIG"));
+
 /// The Instance type is the heart of the mize system
 #[derive(Clone)]
 pub struct Instance {
@@ -141,6 +143,10 @@ impl Instance {
 
     fn init(&mut self) -> MizeResult<()> {
 
+        // load the config from build time
+        let config = ItemData::from_toml(BUILD_TIME_CONFIG)?;
+        self.set_blocking("0", config);
+
         // platform specific init code
         crate::platform::any::instance_init(self);
 
@@ -166,7 +172,7 @@ impl Instance {
 
         let mut instance = Instance::empty()?;
 
-        instance.set_blocking("0", config.clone());
+        instance.set_blocking("0", config);
 
         instance.init()?;
 

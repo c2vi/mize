@@ -13,9 +13,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    mize_modules = {
+      url = "github:c2vi/mize-modules";
+      flake = false;
+    };
+
  		flake-utils.url = "github:numtide/flake-utils";
   };
-  outputs = { self, flake-utils, nixpkgs, fenix, crane, ... }@inputs: flake-utils.lib.eachDefaultSystem (system: 
+  outputs = { self, flake-utils, nixpkgs, fenix, crane, mize_modules, ... }@inputs: flake-utils.lib.eachDefaultSystem (system: 
 
 ############################## LET BINDINGS ##############################
 let
@@ -34,17 +39,27 @@ let
     CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
   });
 
+  defaultMizeConfig = {
+    config = {
+      namespace = "mize.buildtime.ns";
+      module_url = "c2vi.dev";
+    };
+  };
+
 in {
 ############################## PACKAGES ##############################
 
-    webfiles = pkgs.callPackage ./webfiles.nix { inherit inputs nixpkgs self; };
+    packages = {
 
-    packages.default = osCrane.buildPackage {
-      src = "${self}";
-      cargoExtraArgs = "--bin mize --features os-binary";
-    };
+      osCrane = osCrane;
 
-    packages = rec {
+      webfiles = pkgs.callPackage ./webfiles.nix { inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules; };
+
+      default = osCrane.buildPackage {
+        src = "${self}";
+        cargoExtraArgs = "--bin mize --features os-target";
+      };
+
       wasm = wasmCrane.buildPackage {
         src = "${self}";
         CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
@@ -93,6 +108,11 @@ in {
         (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
         lldb gdb
       ];
+
+      MIZE_BUILD_CONFIG = pkgs.writeTextFile {
+        name = "vic-build-config";
+        text = builtins.toJSON defaultMizeConfig;
+      };
 
       shellHook = ''
         export MIZE_CONFIG_FILE=${self}/test-config.toml

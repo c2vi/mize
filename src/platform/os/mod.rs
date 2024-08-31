@@ -188,12 +188,9 @@ pub fn config_from_file(file_path: String) -> MizeResult<ItemData> {
     let toml_string = fs::read_to_string(&file_path)
         .mize_result_msg(format!("Could not read file {} as mize config", &file_path))?;
 
-    let toml_deserializer = toml::Deserializer::new(&toml_string.as_str());
+    let item_data = ItemData::from_toml(toml_string.as_str())?;
 
-    let config = CborValue::deserialize(toml_deserializer)
-        .mize_result_msg(format!("Could not deserialize the content of MIZE_CONFIG_FILE at {}", &file_path))?;
-
-    return Ok(config.into_item_data());
+    return Ok(item_data);
 }
 
 fn config_from_string(config_string: String) -> MizeResult<ItemData> {

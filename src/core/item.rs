@@ -1,4 +1,5 @@
 use tracing::{debug, error, info, instrument, trace, warn, Instrument};
+use serde::Deserialize;
 use serde::Serialize;
 use core::fmt;
 use std::fmt::Debug;
@@ -146,6 +147,16 @@ impl ItemData {
 
     pub fn empty() -> ItemData {
         ItemData(CborValue::Null)
+    }
+
+    pub fn from_toml(toml_string: &str) -> MizeResult<ItemData> {
+
+        let toml_deserializer = toml::Deserializer::new(&toml_string);
+
+        let value = CborValue::deserialize(toml_deserializer)
+            .mize_result_msg(format!("Could not deserialize the toml string: {}", &toml_string))?;
+
+        return Ok(value.into_item_data());
     }
 
     pub fn from_string<S: Into<String>>(into_string: S) -> ItemData {

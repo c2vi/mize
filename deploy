@@ -8,14 +8,16 @@ then
 	echo doneeeeeeeeeeeeeee
 	echo path: $path
 
-	scp -r acern:$path/* ocih:host/webserver/webfiles
+	#scp -r acern:$path/* ocih:host/webserver/webfiles
+  rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
 else
 	path=$(nix build .#webfiles -L -v --print-out-paths $@)
 
 	echo doneeeeeeeeeeeeeee
 	echo path: $path
 
-	scp -r $path/* ocih:host/webserver/webfiles
+	#scp -r $path/* ocih:host/webserver/webfiles
+  rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
 fi
 
 

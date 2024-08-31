@@ -59,6 +59,22 @@
         "type": "github"
       }
     },
+    "mize_modules": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1725110866,
+        "narHash": "sha256-pwbO+IPT6hxQ4orfVftqWnei6k5NvgdgXiLWC7E39zc=",
+        "owner": "c2vi",
+        "repo": "mize-modules",
+        "rev": "3fc5c4a1faba733790a22b22dc795238d569d508",
+        "type": "github"
+      },
+      "original": {
+        "owner": "c2vi",
+        "repo": "mize-modules",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1703637592,
@@ -80,6 +96,7 @@
         "crane": "crane",
         "fenix": "fenix",
         "flake-utils": "flake-utils",
+        "mize_modules": "mize_modules",
         "nixpkgs": "nixpkgs"
       }
     },
