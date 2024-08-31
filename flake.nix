@@ -36,6 +36,9 @@ let
 
 in {
 ############################## PACKAGES ##############################
+
+    webfiles = pkgs.callPackage ./webfiles.nix { inherit inputs nixpkgs self; };
+
     packages.default = osCrane.buildPackage {
       src = "${self}";
       cargoExtraArgs = "--bin mize --features os-binary";

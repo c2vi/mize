@@ -8,7 +8,7 @@ use tracing::{debug, error, info, trace, warn, Instrument};
 use uuid::Uuid;
 use std::fs::File;
 use colored::Colorize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use interner::shared::{VecStringPool, StringPool};
 
 
@@ -290,7 +290,12 @@ impl Instance {
 
     pub fn load_module(&mut self, name: &str) -> MizeResult<()> {
         // platform specific init code
-        crate::platform::any::load_module(self, name)
+        crate::platform::any::load_module(self, name, None)
+    }
+
+    pub fn load_module_at(&mut self, name: &str, path: PathBuf) -> MizeResult<()> {
+        // platform specific init code
+        crate::platform::any::load_module(self, name, Some(path))
     }
 
     pub fn namespace_from_string(&self, ns_str: String) -> MizeResult<Namespace> {

@@ -4,7 +4,7 @@ use std::env::VarError;
 use std::fs;
 use tracing::{debug, error, info, trace, warn};
 use clap::ArgMatches;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use crate::id::MizeId;
@@ -96,37 +96,49 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     Ok(())
 }
 
-pub fn seconds_since_modification(path: &Path) -> u64 {
-    let metadata = match fs::metadata(path) {
-        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
-        Ok(data) => data,
-    };
+pub fn seconds_since_modification(path: &Path) -> MizeResult<u64> {
+    let metadata = fs::metadata(path)?;
 
-    let modified = match metadata.modified() {
-        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
-        Ok(data) => data,
-    };
+    let modified = metadata.modified()?;
 
-    let duration = match modified.duration_since(UNIX_EPOCH) {
-        Err(_) => { return u64::MAX; }, // we are the older file, if it fails
-        Ok(data) => data,
-    };
+    let duration = modified.duration_since(UNIX_EPOCH)?;
 
-    duration.as_secs()
+    Ok(duration.as_secs())
 }
 
-pub fn load_module(instance: &mut Instance, name: &str) -> MizeResult<()> {
+fn get_correct_module_path(module_dir: &Path, name: &str) -> MizeResult<PathBuf> {
+    let mut release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("libmize_module_{}.so", name));
+    let mut debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("libmize_module_{}.so", name));
+
+    if !release_path.exists() && !debug_path.exists() {
+        release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("lib{}.so", name));
+        debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("lib{}.so", name));
+    }
+
+    let release_modtime = match seconds_since_modification(&release_path) {
+        Ok(secs) => secs,
+        Err(e) => { return Ok(debug_path); },
+    };
+
+    let debug_modtime = match seconds_since_modification(&debug_path) {
+        Ok(secs) => secs,
+        Err(e) => { return Ok(release_path); },
+    };
+
+    if seconds_since_modification(&release_path)? > seconds_since_modification(&debug_path)? {
+        return Ok(debug_path);
+    } else {
+        return Ok(release_path);
+    };
+
+}
+
+pub fn load_module(instance: &mut Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> {
 
     let module_dir_str = instance.get("0/config/module_dir")?.value_string()?;
     let module_dir = Path::new(&module_dir_str);
 
-    let release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("libmize_module_{}.so", name));
-    let debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("libmize_module_{}.so", name));
-
-    let module_path = match seconds_since_modification(&release_path) > seconds_since_modification(&debug_path) {
-        true => debug_path,
-        false => release_path,
-    };
+    let module_path = get_correct_module_path(module_dir, name)?;
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 
@@ -135,6 +147,7 @@ pub fn load_module(instance: &mut Instance, name: &str) -> MizeResult<()> {
     let mut module: Box<dyn Module + Send + Sync> = Box::new(EmptyModule {});
 
     unsafe { func(&mut module) };
+    println!("hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii load module");
 
 
     let mut modules_inner = instance.modules.lock()?;

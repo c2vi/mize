@@ -19,6 +19,7 @@ pub use core::instance::module::Module;
 pub use core::instance::Instance;
 pub use core::error::MizeError;
 pub use core::error::MizeResult;
+use std::path::PathBuf;
 
 // platform specific stuff
 pub mod platform {
@@ -52,6 +53,6 @@ pub mod platform {
 pub fn instance_init(instance: &mut core::instance::Instance) {}
 
 
-pub fn load_module(instance: &mut core::instance::Instance, name: &str) -> MizeResult<()> { Ok(()) }
+pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> { Ok(()) }
 
 

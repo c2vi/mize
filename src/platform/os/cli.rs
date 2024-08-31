@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use clap::ArgMatches;
 use home::home_dir;
+use crossbeam::channel::bounded;
 
 use mize::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};
 use mize::instance::Instance;
@@ -131,7 +132,11 @@ pub fn stop(sub_matches: &ArgMatches) -> MizeResult<()> {
 
 
 pub fn gui(sub_matches: &ArgMatches) -> MizeResult<()> {
-    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+    let mut instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+
+    instance.load_module("mme")?;
+
+    instance.wait();
 
     Ok(())
 }

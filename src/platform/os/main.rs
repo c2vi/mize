@@ -166,7 +166,6 @@ fn cli_matches() -> clap::ArgMatches {
             )
         .subcommand(
                 Command::new("gui")
-                .aliases(["g"])
             )
         .arg_required_else_help(true);
 
