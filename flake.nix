@@ -13,6 +13,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     mize_modules = {
       url = "github:c2vi/mize-modules";
       flake = false;
@@ -20,7 +25,7 @@
 
  		flake-utils.url = "github:numtide/flake-utils";
   };
-  outputs = { self, flake-utils, nixpkgs, fenix, crane, mize_modules, ... }@inputs: flake-utils.lib.eachDefaultSystem (system: 
+  outputs = { self, flake-utils, nixpkgs, fenix, crane, mize_modules, rust-overlay, ... }@inputs: flake-utils.lib.eachDefaultSystem (system: 
 
 ############################## LET BINDINGS ##############################
 let
@@ -46,6 +51,12 @@ let
     };
   };
 
+  mizeLib = import ./lib.nix {
+    inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules;
+    inherit rust-overlay crane;
+    localSystem = system;
+  };
+
 in {
 ############################## PACKAGES ##############################
 
@@ -53,9 +64,8 @@ in {
 
       osCrane = osCrane;
 
-      webfiles = pkgs.callPackage ./webfiles.nix { 
-        inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules; 
-        localSystem = system;
+      webfiles = pkgs.callPackage ./webfiles.nix {
+        inherit (mizeLib) buildMizeForSystem mkInstallPhase;
       };
 
       default = osCrane.buildPackage {
