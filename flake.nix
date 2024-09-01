@@ -53,7 +53,10 @@ in {
 
       osCrane = osCrane;
 
-      webfiles = pkgs.callPackage ./webfiles.nix { inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules; };
+      webfiles = pkgs.callPackage ./webfiles.nix { 
+        inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules; 
+        localSystem = system;
+      };
 
       default = osCrane.buildPackage {
         src = "${self}";
