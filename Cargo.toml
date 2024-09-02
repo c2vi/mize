@@ -17,7 +17,7 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
-os-target = [ "clap", "home", "nix", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter", "libloading" ]
+os-target = [ "clap", "home", "nix", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter", "libloading", "ciborium-io", "tracing-core" ]
 wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 async = ["tokio/net", "tokio", "tokio/rt-multi-thread", "tokio/io-util"]
 
@@ -52,6 +52,8 @@ sysinfo = { version = "0.30.12", optional = true }
 tracing-subscriber = { version = "0.3.18", optional = true }
 tokio = { version = "1.21.0", features = ["sync"], optional = true }
 libloading = { version = "0.8.5", optional = true }
+ciborium-io = { version = "0.2.2", optional = true }
+tracing-core = { version = "0.1.32", optional = true }
 
 # bare dependencies
 
@@ -61,8 +63,6 @@ axum-extra = { version = "0.4.2", features = ["spa"], optional = true }
 axum-macros = { version = "0.3.0", optional = true }
 #tokio-core = "0.1.18"
 #tokio-io = "0.1.13"
-#ciborium-io = "0.2.2"
-#tracing-core = "0.1.32"
 
 #tokio-stream = { version = "0.1.9", optional = true }
 #derive_more = "0.99.17"
