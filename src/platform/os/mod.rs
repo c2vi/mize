@@ -14,13 +14,17 @@ use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::item::{ItemData, IntoItemData};
 use crate::memstore::MemStore;
 use crate::{mize_err, Module};
-use crate::platform::os::unix_socket::UnixListener;
 use crate::instance::module::EmptyModule;
 
 use self::fsstore::FileStore;
 
 pub mod fsstore;
+
+#[cfg(target_family = "unix")]
 mod unix_socket;
+
+#[cfg(target_family = "unix")]
+use crate::platform::os::unix_socket::UnixListener;
 //mod web;
 
 
@@ -80,9 +84,19 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     if FileStore::store_is_opened(store_path.to_owned())? {
         // if the store is already opened, connect to the instance, that opened it and join
         // it's namespace
-        info!("CONNECTING");
-        unix_socket::connect(instance, store_path.into())?;
-        return Ok(());
+
+        #[cfg(target_family = "unix")]
+        {
+            info!("CONNECTING");
+            use crate::platform::os::unix_socket;
+            unix_socket::connect(instance, store_path.into())?;
+            return Ok(());
+        }
+
+        #[cfg(target_family = "windows")]
+        {
+            warn!("CONNECTING... would connect, but that is not implemented on windows yet");
+        }
 
     } else {
         // else open it ourselves
@@ -90,7 +104,16 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         instance.migrate_to_store(Box::new(file_store))?;
 
         let path = Path::new(&store_path).to_owned();
-        instance.add_listener(UnixListener::new(path)?)?;
+
+        #[cfg(target_family = "unix")]
+        {
+            instance.add_listener(UnixListener::new(path)?)?;
+        }
+
+        #[cfg(target_family = "windows")]
+        {
+            warn!("would add a Listener on a local socket, but that is not yet implemented for windows");;
+        }
     }
 
     Ok(())
