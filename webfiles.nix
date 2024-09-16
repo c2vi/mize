@@ -2,11 +2,13 @@
 , pkgs
 , mkInstallPhase
 , buildMizeForSystem
+, systems
 , ...
 }: let
 
   # list of systems, we build mize for for webfiles
-  systems = [ "x86_64-linux" "aarch64-linux" "wasm32" ];
+  #systems = [ "x86_64-linux" "aarch64-linux" "wasm32" ];
+  #systems = [ "x86_64-linux" "aarch64-linux" ];
 
   list_of_mizes = map buildMizeForSystem systems;
 
@@ -18,9 +20,10 @@ stdenv.mkDerivation {
   # so that /bin/sh does not get patched to a nix store path in victorinix-s
   dontPatchShebangs = true;
 
-  buildPhase = "";
+  buildPhase = ''
+  '';
 
-  InstallPhase = ''
+  installPhase = ''
     mkdir -p $out
     mkdir -p $out/mize
     mkdir -p $out/mize/dist

@@ -10,7 +10,6 @@
 
     crane = {
       url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     rust-overlay = {
@@ -19,7 +18,8 @@
     };
 
     mize_modules = {
-      url = "github:c2vi/mize-modules";
+      #url = "github:c2vi/mize-modules";
+      url = "git+file:///home/me/work/modules?submodules=1";
       flake = false;
     };
 
@@ -34,9 +34,22 @@ let
     fenix.packages.${system}.targets.wasm32-unknown-unknown.latest.toolchain
     fenix.packages.${system}.latest.toolchain
   ];
+  wasmCrane = (crane.mkLib pkgs).overrideToolchain wasmToolchain;
+
   osToolchain = fenix.packages.${system}.latest.toolchain;
-  wasmCrane = crane.lib.${system}.overrideToolchain wasmToolchain;
-  osCrane = crane.lib.${system}.overrideToolchain osToolchain;
+  osCrane = (crane.mkLib pkgs).overrideToolchain osToolchain;
+
+  #winToolchain = fenix.packages.${system}.combine [
+    #fenix.packages.${system}.targets.x86_64-pc-windows-gnu.latest.toolchain
+    #fenix.packages.${system}.latest.toolchain
+  #];
+  winToolchain = with fenix.packages.${system};
+    combine [
+      minimal.rustc
+      minimal.cargo
+      targets.x86_64-pc-windows-gnu.latest.rust-std
+  ];
+  winCrane = (crane.mkLib pkgs).overrideToolchain winToolchain;
 
   wasmArtifacts = wasmCrane.buildDepsOnly ({
     src = self;
@@ -51,21 +64,55 @@ let
     };
   };
 
+  #systems = [ "aarch64-linux" "x86_64-linux" "x86_64-pc-windows-gnu" "wasm32-unknown-none-unknown" "x86_64-apple-darwin" "aarch64-apple-darwin" ];
+  systems = [ "aarch64-unknown-linux-gnu" "x86_64-unknown-linux-gnu" "x86_64-pc-windows-gnu" "wasm32-unknown-none-unknown" ];
+
   mizeLib = import ./lib.nix {
-    inherit inputs nixpkgs self osCrane defaultMizeConfig mize_modules;
-    inherit rust-overlay crane;
+    inherit inputs nixpkgs pkgs self osCrane defaultMizeConfig mize_modules;
+    inherit rust-overlay crane fenix;
     localSystem = system;
   };
 
 in {
 ############################## PACKAGES ##############################
 
-    packages = {
+    packages = rec {
 
-      osCrane = osCrane;
+      inherit osCrane;
+      #test = mizeLib.buildMizeForSystem "wasm32-unknown-none-unknown";
+      test = mizeLib.buildMizeForSystem "aarch64-linux";
+      #test = mizeLib.buildMizeForSystem "x86_64-pc-windows-gnu";
+
+      mizeFor = let
+        mizes = map mizeLib.buildMizeForSystem systems;
+      in builtins.listToAttrs ( map ( mize: { name = mize.system.name; value = mize; } ) mizes );
+
+      #pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-pc-windows-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
+
+      pkgsTest = pkgs;
+
+      #pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-w64-windows-mingw"; }; overlays = [ rust-overlay.overlays.default ]; };
+      pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-unknown-linux-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
+      craneLib = (crane.mkLib pkgsCross).overrideToolchain (p: p.rust-bin.stable.latest.default);
+
+
+      one = craneLib.buildPackage {
+        src = "${self}";
+        #cargoExtraArgs = "--bin mize --features os-target";
+        cargoExtraArgs = "--bin mize";
+        doCheck = false; # tests does not work in wasm
+        CARGO_BUILD_TARGET = "x86_64-pc-windows-gnu";
+        MIZE_BUILD_CONFIG = pkgs.writeTextFile {
+          name = "mize-build-config";
+          text = builtins.toJSON (defaultMizeConfig // {
+            mize_version = one.version;
+          });
+        };
+      };
 
       webfiles = pkgs.callPackage ./webfiles.nix {
         inherit (mizeLib) buildMizeForSystem mkInstallPhase;
+        inherit systems;
       };
 
       default = osCrane.buildPackage {
@@ -76,6 +123,7 @@ in {
       wasm = wasmCrane.buildPackage {
         src = "${self}";
         CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+        cargoExtraArgs = "--bin mize --features wasm-target";
         doCheck = false;
       };
 
@@ -105,37 +153,94 @@ in {
     };
 
 ############################## DEV SHELLS ##############################
-    devShells.default = pkgs.mkShell {
-      buildInputs = with pkgs; [
-        wasm-pack #pkg-config openssl #cargo rustc
-        cargo-generate
-        /*
-        (fenix.packages.${system}.complete.withComponents [
-          "cargo"
-          "clippy"
-          "rust-src"
-          "rustc"
-          "rustfmt"
-        ])
-        */
-        (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
-        lldb gdb
-      ];
+    devShells = {
 
-      MIZE_BUILD_CONFIG = pkgs.writeTextFile {
-        name = "vic-build-config";
-        text = builtins.toJSON defaultMizeConfig;
+      one = pkgs.stdenv.mkDerivation {
+        name = "hiiiiiiii";
+        nativeBuildInputs = [
+          (fenix.packages.${system}.combine [ wasmToolchain osToolchain winToolchain ])
+        ];
+        buildInputs = [
+          pkgs.pkgsCross.mingwW64.stdenv.cc.cc
+          pkgs.pkgsCross.mingwW64.windows.pthreads
+          (fenix.packages.${system}.combine [ wasmToolchain osToolchain winToolchain ])
+        ];
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+          pkgs.pkgsCross.mingwW64.windows.pthreads
+        ];
+
+        RUSTFLAGS="-L ${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
+        CARGO_BUILD_TARGET = "x86_64-pc-windows-gnu";
+
+
+        #fixes issues related to openssl
+        OPENSSL_DIR = "${pkgs.openssl.dev}";
+        OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+        OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
+
+        depsBuildBuild = with pkgs; [
+          pkgsCross.mingwW64.stdenv.cc
+          pkgsCross.mingwW64.windows.pthreads
+        ];
       };
 
-      shellHook = ''
-        export MIZE_CONFIG_FILE=${self}/test-config.toml
-      '';
+      win = winCrane.buildPackage {
+        #src = winCrane.cleanCargoSource ./testing;
+        #pname = "testing";
+        src = ./testing;
+
+        strictDeps = true;
+        doCheck = false;
+
+        CARGO_BUILD_TARGET = "x86_64-pc-windows-gnu";
+
+        # fixes issues related to libring
+        TARGET_CC = "${pkgs.pkgsCross.mingwW64.stdenv.cc}/bin/${pkgs.pkgsCross.mingwW64.stdenv.cc.targetPrefix}cc";
+
+        #fixes issues related to openssl
+        OPENSSL_DIR = "${pkgs.openssl.dev}";
+        OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+        OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
+
+        depsBuildBuild = with pkgs; [
+          pkgsCross.mingwW64.stdenv.cc
+          pkgsCross.mingwW64.windows.pthreads
+        ];
+        shellHook = ''
+          export MIZE_CONFIG_FILE=${self}/test-config.toml
+        '';
+        MIZE_BUILD_CONFIG = pkgs.writeTextFile {
+          name = "vic-build-config";
+          text = builtins.toJSON defaultMizeConfig;
+        };
+      };
+
+
+      default = pkgs.mkShell {
+        buildInputs = with pkgs; [
+
+          wasm-pack #pkg-config openssl #cargo rustc
+          cargo-generate
+          (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
+          lldb gdb
+        ];
+
+        MIZE_BUILD_CONFIG = pkgs.writeTextFile {
+          name = "vic-build-config";
+          text = builtins.toJSON defaultMizeConfig;
+        };
+
+        shellHook = ''
+          export MIZE_CONFIG_FILE=${self}/test-config.toml
+        '';
+      };
     };
 
   }) // {
 
 ############################## SOME GLOBAL OUTPUTS ##############################
     inherit inputs self;
+    rustPkgs = import nixpkgs { overlays = [rust-overlay.overlays.default]; system = "x86_64-linux"; };
   };
 }
 

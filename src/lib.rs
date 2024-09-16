@@ -1,6 +1,11 @@
 
 #![ allow( warnings ) ]
 
+#[no_mangle]
+pub fn main() {
+    println!("hello from main fn");
+}
+
 static PROTO_VERSION: u8 = 1;
 
 // the core part has the code that can run on any platform
@@ -42,6 +47,9 @@ pub mod platform {
 
         #[cfg(feature = "os-target")]
         pub use super::os::load_module;
+
+        #[cfg(feature = "wasm-target")]
+        pub use super::super::load_module;
 
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::load_module;

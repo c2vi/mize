@@ -64,8 +64,8 @@ pub struct Instance {
     // TODO: set to a random uuid
     pub self_namespace: Arc<Mutex<Namespace>>,
     pub op_tx: channel::Sender<Operation>,
-    context: Vec<MizeId>,
-    threads: Vec<String>,
+    threads: Arc<Mutex<Vec<(u32, String)>>>,
+    next_thread_id: Arc<Mutex<u32>>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
     update_thread_busy: Arc<Mutex<bool>>,
@@ -100,8 +100,8 @@ impl Instance {
             namespace, self_namespace, op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
             modules: Arc::new(Mutex::new(HashMap::new())),
-            context: vec![],
-            threads: vec![],
+            threads: Arc::new(Mutex::new(Vec::new())),
+            next_thread_id: Arc::new(Mutex::new(0)),
             next_con_id: Arc::new(Mutex::new(1)),
             give_msg_wait, create_msg_wait,
             update_thread_busy: Arc::new(Mutex::new(false)),
@@ -151,16 +151,15 @@ impl Instance {
         crate::platform::any::instance_init(self);
 
         // end of platform specific init code
-        self.load_module("Blob")?;
 
-        let mut modules_inner = self.modules.lock()?;
 
-        let module = modules_inner.get_mut("Blob").unwrap();
+        self.load_module("String")?;
 
-        println!("right before segfault");
-        module.init(&self);
+        //let mut modules_inner = self.modules.lock()?;
+        //let module = modules_inner.get_mut("String").unwrap();
+        //println!("right before segfault");
+        //module.init(&self);
 
-        //self.load_module("String")?;
 
         debug!("INSTANCE INIT DONE");
         Ok(())
@@ -398,8 +397,33 @@ impl Instance {
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
-        self.threads.push(name.to_owned());
-        thread::spawn(move || func());
+        let threads_inner = self.threads.lock()?;
+        let mut next_thread_id = self.next_thread_id.lock()?;
+
+        threads_inner.push((next_thread_id, name.to_owned()));
+
+        let to_spawn = move || {
+            debug!("spawning thread: {}", name);
+            let my_thread_id = next_thread_id;
+
+            func()?;
+
+            let mut threads_inner = self.threads.lock()?;
+            threads_inner = threads_inner.into_iter().filter(|el| match el {
+                (my_thread_id, _) => false,
+                (_, _) => true,
+            });
+            debug!("thread '{}' stopped", name);
+        };
+
+        *next_thread_id += 1;
+
+        #[cfg(feature = "os-target")]
+        thread::spawn(move || to_spawn());
+
+        #[cfg(feature = "wasm-target")]
+        crate::platform::wasm::wasm_spawn(move || to_spawn())?;
+
         Ok(())
     }
 

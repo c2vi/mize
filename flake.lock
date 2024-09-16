@@ -1,17 +1,12 @@
 {
   "nodes": {
     "crane": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
       "locked": {
-        "lastModified": 1715274763,
-        "narHash": "sha256-3Iv1PGHJn9sV3HO4FlOVaaztOxa9uGLfOmUWrH7v7+A=",
+        "lastModified": 1725125250,
+        "narHash": "sha256-CB20rDD5eHikF6mMTTJdwPP1qvyoiyyw1RDUzwIaIF8=",
         "owner": "ipetkov",
         "repo": "crane",
-        "rev": "27025ab71bdca30e7ed0a16c88fd74c5970fc7f5",
+        "rev": "96fd12c7100e9e05fa1a0a5bd108525600ce282f",
         "type": "github"
       },
       "original": {
@@ -62,14 +57,18 @@
     "mize_modules": {
       "flake": false,
       "locked": {
-        "lastModified": 1725174598,
-        "narHash": "sha256-jB5YUArfAiwYwZ7qLwWMHCAY4DMWmLp7F3hzEG5mezk=",
-        "path": "/home/me/work/modules",
-        "type": "path"
+        "dirtyRev": "fa3b462cbe3e63fc9ecada6c4445d366e58a6f86-dirty",
+        "dirtyShortRev": "fa3b462-dirty",
+        "lastModified": 1725362504,
+        "narHash": "sha256-uL7SRKxrCpS/9sXVOdClijqdxXNLIuiHZ54YYZck42E=",
+        "submodules": true,
+        "type": "git",
+        "url": "file:///home/me/work/modules"
       },
       "original": {
-        "path": "/home/me/work/modules",
-        "type": "path"
+        "submodules": true,
+        "type": "git",
+        "url": "file:///home/me/work/modules"
       }
     },
     "nixpkgs": {

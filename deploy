@@ -2,14 +2,14 @@
 if [[ "$1" == "a" ]]
 then
 	ssh acern mkdir -p /tmp/victorinix
-	rsync -rv --exclude="target" ./* acern:/tmp/victorinix/
+	rsync -rv --exclude="target" --exclude="gitignore" ./* acern:/tmp/victorinix/
 	path=$(ssh acern nix build /tmp/victorinix#webfiles -L --print-out-paths)
 
 	echo doneeeeeeeeeeeeeee
 	echo path: $path
 
 	#scp -r acern:$path/* ocih:host/webserver/webfiles
-  rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
+  	rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
 else
 	path=$(nix build .#webfiles -L -v --print-out-paths $@)
 

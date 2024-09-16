@@ -6,6 +6,9 @@ license = "GPL-3.0"
 description = 'A strongly typed "filesystem" for the age of connectivity.'
 repository = "https://github.com/c2vi/mize"
 
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
 [lib]
 name = "mize"
 path = "src/lib.rs"
@@ -17,6 +20,7 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
+default = [ "os-target" ]
 os-target = [ "clap", "home", "nix", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter", "libloading", "ciborium-io", "tracing-core" ]
 wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli" ]
 async = ["tokio/net", "tokio", "tokio/rt-multi-thread", "tokio/io-util"]
