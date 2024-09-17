@@ -397,23 +397,27 @@ impl Instance {
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
-        let threads_inner = self.threads.lock()?;
+        let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 
-        threads_inner.push((next_thread_id, name.to_owned()));
+        threads_inner.push((*next_thread_id, name.to_owned()));
 
-        let to_spawn = move || {
-            debug!("spawning thread: {}", name);
-            let my_thread_id = next_thread_id;
+        let my_thread_id_no_mutex_guard = *next_thread_id;
+        let thread_mutex = self.threads.clone();
+        let name_to_move = name.to_owned();
+        let to_spawn = move || -> MizeResult<()> {
+            debug!("spawning thread: {}", name_to_move);
+            let my_thread_id = my_thread_id_no_mutex_guard;
 
             func()?;
 
-            let mut threads_inner = self.threads.lock()?;
-            threads_inner = threads_inner.into_iter().filter(|el| match el {
+            let mut threads_inner = thread_mutex.lock()?;
+            *threads_inner = threads_inner.clone().into_iter().filter(|el| match el {
                 (my_thread_id, _) => false,
                 (_, _) => true,
-            });
-            debug!("thread '{}' stopped", name);
+            }).collect();
+            debug!("thread '{}' stopped", name_to_move);
+            Ok(())
         };
 
         *next_thread_id += 1;
@@ -422,7 +426,7 @@ impl Instance {
         thread::spawn(move || to_spawn());
 
         #[cfg(feature = "wasm-target")]
-        crate::platform::wasm::wasm_spawn(move || to_spawn())?;
+        crate::platform::wasm::wasm_spawn(to_spawn)?;
 
         Ok(())
     }
@@ -452,12 +456,22 @@ impl Instance {
         return Ok(data);
     }
 
+
     #[cfg(feature = "async")]
-    pub fn spawn_async<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) {
-        self.threads.push(name.to_owned());
+    pub fn spawn_async<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) -> MizeResult<()> {
+        let mut threads_inner = self.threads.lock()?;
+        let mut next_thread_id = self.next_thread_id.lock()?;
+
+        threads_inner.push((*next_thread_id, name.to_owned()));
         let runtime_inner = self.runtime.lock().unwrap();
         runtime_inner.spawn(func);
+
+        *next_thread_id += 1;
+
+        Ok(())
     }
+
+
     #[cfg(feature = "async")]
     pub fn async_get_handle(&self) -> Handle {
         let runtime_inner = self.runtime.lock().unwrap();
@@ -467,13 +481,18 @@ impl Instance {
 
     #[cfg(feature = "async")]
     pub fn spawn_async_blocking<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) -> F::Output {
-        use std::process::Output;
 
-        self.threads.push(name.to_owned());
+        let mut threads_inner = self.threads.lock().expect("mutex lock failed in spawn_async_blocking");
+        let mut next_thread_id = self.next_thread_id.lock().expect("mutex lock failed in spawn_async_blocking");
+
+        threads_inner.push((*next_thread_id, name.to_owned()));
         let runtime_inner = self.runtime.lock().unwrap();
         let handle = runtime_inner.handle().to_owned();
         drop(runtime_inner);
         let result = handle.block_on(func);
+
+        *next_thread_id += 1;
+
         return result;
     }
 
