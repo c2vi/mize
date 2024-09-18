@@ -409,6 +409,27 @@ impl Instance {
             debug!("spawning thread: {}", name_to_move);
             let my_thread_id = my_thread_id_no_mutex_guard;
 
+
+            #[cfg(feature = "wasm-target")]
+            unsafe {
+// console_log macro
+use wasm_bindgen::prelude::*;
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+//end of console_log macro
+            console_log!("in other threadddddddddddddd");
+            }
+
+
+
             func()?;
 
             let mut threads_inner = thread_mutex.lock()?;

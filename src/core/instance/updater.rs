@@ -49,6 +49,23 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
 }
 
 pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
+    #[cfg(feature = "wasm-target")]
+    unsafe {
+// console_log macro
+use wasm_bindgen::prelude::*;
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+//end of console_log macro
+        console_log!("handle operation....");
+    }
     match operation {
         Operation::Set(id, value, maybe_conn) => {
             let item_data: ItemData = value.to_owned();

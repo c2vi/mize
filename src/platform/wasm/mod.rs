@@ -1,4 +1,3 @@
-use wasm_bindgen::prelude::*;
 use std::ptr::NonNull;
 use std::panic;
 use web_sys::js_sys;
@@ -10,9 +9,11 @@ use crate::instance::{self, Instance};
 use crate::error::MizeResult;
 use crate::{mize_err, Module};
 use crate::MizeError;
+use crate::core::item::IntoItemData;
 
 
 // console_log macro
+use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
@@ -129,6 +130,12 @@ impl JsInstance {
         };
         let mut js_instance = JsInstance { inner: NonNull::from(Box::leak(Box::new(instance))) };
         return js_instance;
+    }
+
+    #[wasm_bindgen]
+    pub unsafe fn test(&mut self) -> () {
+        console_log!("hiiiiiiiiiiiiiiii from test");
+        self.inner.as_mut().set("0/config/hello", "hello world".into_item_data());
     }
 
     //#[wasm_bindgen]
