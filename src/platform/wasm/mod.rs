@@ -37,7 +37,6 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 // A function imitating `std::thread::spawn`.
 // thanks to: https://www.tweag.io/blog/2022-11-24-wasm-threads-and-messages/
 pub fn wasm_spawn(f: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
-    
 
     // to get window.mize_worker_url, which is set by some js code, which gets "compiled" by a
     // bundler, which sets window.mize_worker_url to the url of ./npm_pkg/worker.js
@@ -59,6 +58,7 @@ pub fn wasm_spawn(f: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeRe
     let window_obj = JsValue::from(web_sys::window().unwrap());
     let worker_fn: Function = js_sys::Reflect::get(&window_obj, &("mize_worker_fn".into())).unwrap().into();
     let worker: Worker = worker_fn.call0(&web_sys::wasm_bindgen::JsValue::NULL).unwrap().into();
+
 
     /*
     let worker_url_href = js_sys::Reflect::get(&worker_url_obj, &("href".into())).unwrap();
@@ -82,7 +82,18 @@ pub fn wasm_spawn(f: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeRe
     msg.push(&wasm_bindgen::memory());
     // Also send the worker the address of the closure we want to execute.
     msg.push(&JsValue::from(ptr as u32));
-    worker.post_message(&msg);
+    //worker.post_message(&(msg.into())).expect("post message failed");
+
+    let js_fn_code = r#"
+        console.log("hi from js_fn_code", msg)
+        worker.postMessage(msg)
+    "#;
+    let js_fn = Function::new_with_args("worker, msg", js_fn_code);
+    let res = js_fn.call2(
+        &web_sys::wasm_bindgen::JsValue::NULL,
+        &worker,
+        &msg
+    ).unwrap();
 
     Ok(())
 }

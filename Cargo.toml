@@ -20,9 +20,10 @@ path = "src/platform/os/main.rs"
 required-features = [ "os-target" ]
 
 [features]
+we_alloc = []
 default = [ "os-target" ]
 os-target = [ "clap", "home", "nix", "sysinfo", "ciborium/default", "tracing-subscriber", "async", "tracing-subscriber/env-filter", "libloading", "ciborium-io", "tracing-core" ]
-wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli", "web-sys", "web-sys/Worker", "web-sys/Window", "web-sys/WorkerOptions", "web-sys/WorkerType" ]
+wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli", "web-sys", "web-sys/Worker", "web-sys/Window", "web-sys/WorkerOptions", "web-sys/WorkerType", "we_alloc" ]
 async = ["tokio/net", "tokio", "tokio/rt-multi-thread", "tokio/io-util"]
 
 
