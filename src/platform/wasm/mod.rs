@@ -1,6 +1,8 @@
 use std::ptr::NonNull;
 use std::panic;
 use web_sys::js_sys;
+use crate::id::MizeId;
+use crate::item::Item;
 use crate::platform::wasm::js_sys::Function;
 use web_sys::{WorkerOptions, WorkerType};
 use web_sys::Worker;
@@ -37,6 +39,8 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 // A function imitating `std::thread::spawn`.
 // thanks to: https://www.tweag.io/blog/2022-11-24-wasm-threads-and-messages/
 pub fn wasm_spawn(f: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
+    console_log!("no threading in the browser.....");
+    return Ok(());
 
     // to get window.mize_worker_url, which is set by some js code, which gets "compiled" by a
     // bundler, which sets window.mize_worker_url to the url of ./npm_pkg/worker.js
@@ -118,13 +122,13 @@ pub struct JsInstance {
     inner: NonNull<Instance>,
 }
 
-/*
+
 #[wasm_bindgen]
-pub struct JsModule {
-    inner: NonNull<Box<dyn Module + Send + Sync>>,
-    //inner: *mut Mme,
+pub struct JsItemHandle {
+    instance: NonNull<Instance>,
+    id: MizeId,
 }
-*/
+
 
 #[wasm_bindgen]
 impl JsInstance {
@@ -144,11 +148,44 @@ impl JsInstance {
     }
 
     #[wasm_bindgen]
-    pub unsafe fn test(&mut self) -> () {
-        console_log!("hiiiiiiiiiiiiiiii from test");
-        self.inner.as_mut().set("0/config/hello", "hello world".into_item_data());
+    pub unsafe fn set(&mut self, id: String, value: String) -> () {
+        let data = value.into_item_data();
+        console_log!("data in set: {}", data);
+        self.inner.as_mut().set_blocking(id, data);
     }
 
-    //#[wasm_bindgen]
+    #[wasm_bindgen]
+    pub unsafe fn get_handle(&mut self, id: String) -> MizeResult<JsItemHandle> {
+        let item = self.inner.as_mut().get(id)?;
+        Ok(JsItemHandle { instance: self.inner, id: item.id()})
+    }
+}
 
+
+#[wasm_bindgen]
+impl JsItemHandle {
+
+    #[wasm_bindgen]
+    pub unsafe fn value_string(&mut self) -> MizeResult<String> {
+        let item = self.instance.as_mut().get(self.id.clone())?;
+        let string = item.value_string()?;
+        Ok(string)
+    }
+
+    #[wasm_bindgen]
+    pub unsafe fn as_data_full(&mut self) -> MizeResult<JsValue> {
+        let item = self.instance.as_mut().get(self.id.clone())?;
+        let data_raw = item.as_data_full()?;
+        let jsvalue = serde_wasm_bindgen::to_value(data_raw.cbor())?;
+        Ok(jsvalue)
+    }
+
+}
+
+
+impl From<MizeError> for JsValue {
+    fn from(value: MizeError) -> Self {
+        let string = format!("{:?}", value);
+        string.into()
+    }
 }

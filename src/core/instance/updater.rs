@@ -64,8 +64,9 @@ macro_rules! console_log {
     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 }
 //end of console_log macro
-        console_log!("handle operation....");
+        console_log!("handle operation....: {:?}", operation);
     }
+
     match operation {
         Operation::Set(id, value, maybe_conn) => {
             let item_data: ItemData = value.to_owned();
@@ -81,7 +82,7 @@ macro_rules! console_log {
                 };
                 for sub in vec.iter_mut() {
 
-                    // don't handle sub of type connection, in case the update comes from  this
+                    // don't handle sub of type connection, in case the update comes from this
                     // connection
                     if let Some(conn) = maybe_conn {
                         if let Subscription::Connection(conn2) = sub {

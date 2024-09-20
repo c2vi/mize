@@ -12,6 +12,7 @@ use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::item::{Item, ItemData};
 use crate::instance::Instance;
 use crate::item::get_raw_from_cbor;
+use crate::mize_err;
 
 #[derive(Clone, Debug)]
 pub struct MemStore {
@@ -30,7 +31,18 @@ impl Store for MemStore {
     fn set(&self, id: MizeId, data: ItemData) -> MizeResult<()> {
         let mut inner = self.inner.lock()?;
 
-        inner.map.insert(id_to_u64(id)?, data);
+        if let Some(old_data) = inner.map.get(&id_to_u64(id.clone())?) {
+            //if there is already data there, set at the correct path
+            let mut old_data = old_data.to_owned();
+            let path = id.after_store_part();
+            old_data.set_path(path, data)?;
+            inner.map.insert(id_to_u64(id)?, old_data);
+
+        } else {
+            // if no data exists for that store_part, just insert
+            inner.map.insert(id_to_u64(id)?, data);
+        }
+
         return Ok(())
     }
     fn get_links(&self, item: Item) -> MizeResult<Vec<MizeId>> {
@@ -76,11 +88,31 @@ impl Store for MemStore {
             None => ItemData::new(),
         };
 
-        let tmp = id.path();
-        let mut path_iter = tmp.into_iter();
-        path_iter.next();
-        let new_path: Vec<String> = path_iter.map(|v| v.to_owned()).collect();
+        let new_path = id.after_store_part();
         let ret_data = data.get_path(new_path)?;
+
+
+
+    #[cfg(feature = "wasm-target")]
+    unsafe {
+// console_log macro
+use wasm_bindgen::prelude::*;
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+//end of console_log macro
+        console_log!("ret_data in data full in memstore: {:?}", ret_data);
+    }
+
+
+
 
         return Ok(ret_data);
     }

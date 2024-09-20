@@ -110,6 +110,7 @@ impl Item<'_> {
     pub fn merge<V: Into<ItemData> + Debug >(&mut self, mut value: V) -> MizeResult<()> {
 
         let mut data = self.as_data_full()?;
+        //let mut data = data_full.get_path(id_path_without_store_part)?;
         trace!("item::merge data: {:?}", data);
         trace!("item::merge id: {:?}", self.id());
 
@@ -171,6 +172,10 @@ impl ItemData {
 
     pub fn cbor(&self) -> &CborValue {
         &self.0
+    }
+
+    pub fn from_cbor(cbor: CborValue) -> ItemData {
+        ItemData (cbor)
     }
 
     pub fn null() -> CborValue {
@@ -243,6 +248,12 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
     //trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
     //trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
     //trace!("[ {} ] data_to_set: {}", "ARG".yellow(), data_to_set.clone().into_item_data());
+
+    test_println!("###########################");
+    test_println!("data: {}", ItemData::from_cbor(data.clone()));
+    test_println!("path: {:?}", path);
+    test_println!("data_to_set: {}", ItemData::from_cbor(data_to_set.clone()));
+    test_println!("###########################");
 
     let mut path_iter = path.clone().into_iter();
     let path_el = match path_iter.nth(0) {
@@ -474,7 +485,7 @@ impl IntoItemData for i128 {
 
 impl fmt::Display for ItemData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\nItemData: ");
+        write!(f, "ItemData: ");
         let display_writer = DisplayWriter (f);
         self.0.serialize(&mut serde_json::Serializer::pretty(display_writer))
             .map_err(|serde_err| std::fmt::Error)
@@ -494,4 +505,18 @@ impl<'a, 'b> io::Write for DisplayWriter<'a, 'b> {
     }
     fn flush(&mut self) -> std::result::Result<(), std::io::Error> { todo!() }
 }
+
+impl PartialEq for ItemData {
+    fn eq(&self, other: &Self) -> bool {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut buf_other: Vec<u8> = Vec::new();
+
+        ciborium::into_writer(&self.0, &mut buf);
+        ciborium::into_writer(&other.0, &mut buf_other);
+
+        buf == buf_other
+    }
+}
+impl Eq for ItemData {}
+
 

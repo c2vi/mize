@@ -1,12 +1,34 @@
 
 #![ allow( warnings ) ]
 
-#[no_mangle]
-pub fn main() {
-    println!("hello from main fn");
+static PROTO_VERSION: u8 = 1;
+
+#[macro_export]
+macro_rules! test_println {
+    ($($arg:tt)*) => { 
+
+        #[cfg(test)]
+        print!("[[ {} ]] ", <&str as colored::Colorize>::blue("TEST"));
+
+        #[cfg(test)]
+        print!($($arg)*);
+
+        #[cfg(test)]
+        print!("\n");
+    };
 }
 
-static PROTO_VERSION: u8 = 1;
+#[macro_export]
+macro_rules! test_print {
+    ($($arg:tt)*) => { 
+
+        #[cfg(test)]
+        print!("[[ {} ]] ", <&str as colored::Colorize>::blue("TEST"));
+
+        #[cfg(test)]
+        print!($($arg)*);
+    };
+}
 
 // the core part has the code that can run on any platform
 mod core {

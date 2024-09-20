@@ -41,6 +41,9 @@ pub mod updater;
 pub mod msg_thread;
 pub mod module;
 
+#[cfg(test)]
+mod tests;
+
 static MSG_CHANNEL_SIZE: usize = 200;
 
 static BUILD_TIME_CONFIG: &str = include_str!(std::env!("MIZE_BUILD_CONFIG"));
@@ -267,7 +270,7 @@ impl Instance {
     }
 
     pub fn id_from_string(&self, string: String) -> MizeResult<MizeId> {
-        let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).collect();
+        let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).filter(|el| el.as_str() != "").collect();
         self.id_from_vec_string(vec_string)
     }
 
@@ -408,27 +411,6 @@ impl Instance {
         let to_spawn = move || -> MizeResult<()> {
             debug!("spawning thread: {}", name_to_move);
             let my_thread_id = my_thread_id_no_mutex_guard;
-
-
-            #[cfg(feature = "wasm-target")]
-            unsafe {
-// console_log macro
-use wasm_bindgen::prelude::*;
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! console_log {
-    // Note that this is using the `log` function imported above during
-    // `bare_bones`
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-//end of console_log macro
-            console_log!("in other threadddddddddddddd");
-            }
-
-
 
             func()?;
 

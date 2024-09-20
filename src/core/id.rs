@@ -51,6 +51,15 @@ impl MizeId {
         self.path.clone()
     }
 
+    pub fn after_store_part(&self) -> Vec<String> {
+        let tmp = self.path();
+        let mut path_iter = tmp.into_iter();
+        path_iter.next();
+        let new_path: Vec<String> = path_iter.map(|v| v.to_owned()).collect();
+
+        return new_path;
+    }
+
     pub fn namespace(&self) -> Namespace {
         self.namespace.clone()
     }
@@ -128,3 +137,46 @@ impl IntoMizeId for MizeId {
 //}
 
 
+#[cfg(test)]
+mod test {
+    use crate::instance::Instance;
+
+    use super::*;
+
+    #[test]
+    fn test_id() -> MizeResult<()> {
+        let instance = Instance::empty()?;
+
+        let id_one = instance.new_id("0/config/hi")?;
+        assert_eq!(instance.get_namespace()?, id_one.namespace());
+        assert_eq!("0", id_one.store_part());
+        assert_eq!(vec!["config".to_owned(), "hi".to_owned()], id_one.after_store_part());
+
+        let id_two = instance.new_id("test.ns:hello/config/hi")?;
+        assert_eq!(instance.namespace_from_string("test.ns".to_owned())?, id_two.namespace());
+        assert_eq!("hello", id_two.store_part());
+        assert_eq!(vec!["config".to_owned(), "hi".to_owned()], id_one.after_store_part());
+
+        let id_three = instance.new_id("0/")?;
+        assert_eq!(instance.get_namespace()?, id_three.namespace());
+        assert_eq!("0", id_three.store_part());
+        assert_eq!(Vec::<String>::new(), id_three.after_store_part());
+
+        let id_four = instance.new_id("test.ns:0/")?;
+        assert_eq!(instance.namespace_from_string("test.ns".to_owned())?, id_four.namespace());
+        assert_eq!("0", id_four.store_part());
+        assert_eq!(Vec::<String>::new(), id_four.after_store_part());
+
+        let id_fife = instance.new_id("0")?;
+        assert_eq!(instance.get_namespace()?, id_fife.namespace());
+        assert_eq!("0", id_fife.store_part());
+        assert_eq!(Vec::<String>::new(), id_fife.after_store_part());
+
+        //TODO: add the parsing form mize:// urls....
+
+
+        Ok(())
+    }
+
+
+}
