@@ -32,8 +32,6 @@ pub trait IntoMizeId {
 }
 
 
-
-
 impl MizeId {
     pub fn store_part(&self) -> &str {
         self.path.iter().nth(0)

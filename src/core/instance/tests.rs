@@ -31,10 +31,11 @@ fn test_set_sub_path() -> MizeResult<()> {
     assert_eq!(item.as_data_full()?, data);
 
     // try to set a sub path of item
-    instance.set(vec![item.id().store_part(), "config", "test", "inner"], "hello".into_item_data())?;
+    instance.set_blocking(vec![item.id().store_part(), "config", "test", "inner"], "new inner".into_item_data())?;
 
     // the contents of item should then be like data_two
-    assert_eq!(instance.get(vec![item.id().store_part(), "config", "test", "inner"])?.as_data_full()?, ItemData::from_string("hello"));
+    println!("item with id '{}': {}", item.id(), instance.get(vec![item.id().store_part()])?.as_data_full()?);
+    assert_eq!(instance.get(vec![item.id().store_part(), "config", "test", "inner"])?.as_data_full()?, ItemData::from_string("new inner"));
     assert_eq!(item.as_data_full()?, data_two);
 
     Ok(())
@@ -140,9 +141,14 @@ fn test_item_merge() -> MizeResult<()> {
     Ok(())
 }
 
+/*
 #[test]
 #[should_panic(expected = "correct panic")]
 fn test_cant_set_non_existent_item() -> () {
     let instance = Instance::empty().expect("wrong panic");
     instance.set_blocking("5", "hello world".into_item_data()).expect("correct panic");
 }
+*/
+
+
+

@@ -121,7 +121,7 @@ impl Item<'_> {
 
         if self.instance.we_are_namespace()? {
             let store_inner = self.instance.store.lock()?;
-            store_inner.set(self.id(), data);
+            store_inner.set(self.id(), data)?;
         } else {
             let namespace = self.id().namespace();
             let mut connection = self.instance.get_connection_by_ns(namespace)?;
@@ -262,14 +262,14 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
             // our base case
             *data = data_to_set.to_owned();
             return Ok(());
-        }, 
+        },
     };
     match data {
         CborValue::Map(ref mut map) => {
             for (key, val) in map {
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
-                        path_iter.next();
+                        //path_iter.next();
                         return item_data_set_path(val, path_iter.collect(), data_to_set);
                     }
                 }
@@ -290,6 +290,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
                 .msg(format!("{:?} is: {:?}", path_el, val)));
         },
     };
+
     return Err(MizeError::new().msg("unreachable"));
 }
 
