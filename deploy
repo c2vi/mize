@@ -1,23 +1,43 @@
 
+set -e
+
+
+
 if [[ "$1" == "a" ]]
 then
-	ssh acern mkdir -p /tmp/victorinix
-	rsync -rv --exclude="target" --exclude="gitignore" ./* acern:/tmp/victorinix/
-	path=$(ssh acern nix build /tmp/victorinix#webfiles -L --print-out-paths)
+	ssh acern mkdir -p /tmp/mize-src
+	ssh acern mkdir -p ~/work/modules
+	rsync -rv --exclude="target" --exclude="gitignore" ./* acern:/tmp/mize-src/
+	rsync -rv --exclude="target" --exclude="gitignore" --exclude="node_modules" ~/work/modules acern:work/
+	path=$(ssh acern /home/me/out/nix/bin/nix build /tmp/mize-src#webfiles -L --print-out-paths)
 
-	echo doneeeeeeeeeeeeeee
+	echo doneeeeeeeeeeeeeee building
 	echo path: $path
 
 	#scp -r acern:$path/* ocih:host/webserver/webfiles
-  	rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
+	tmp=$(mktemp -d)
+  	[[ "$path" != "" ]] && rsync -rv -p --chmod=u+w acern:$path/* $tmp
+  	[[ "$path" != "" ]] && rsync -rv $tmp/* ocih:host/webserver/webfiles/ --rsync-path="sudo rsync"
+
+
+
+elif [[ "$1" == "c" ]] # only copy files to acern
+then
+	ssh acern mkdir -p /tmp/mize-src
+	ssh acern mkdir -p ~/work/modules
+	rsync -rv --exclude="target" --exclude="gitignore" ./* acern:/tmp/mize-src/
+	rsync -rv --exclude="target" --exclude="gitignore" --exclude="node_modules" ~/work/modules acern:work/
+
+
+
 else
 	path=$(nix build .#webfiles -L -v --print-out-paths $@)
 
-	echo doneeeeeeeeeeeeeee
+	echo doneeeeeeeeeeeeeee building
 	echo path: $path
 
 	#scp -r $path/* ocih:host/webserver/webfiles
-  rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
+   [[ "$path" != "" ]] && rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
 fi
 
 

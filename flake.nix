@@ -71,6 +71,7 @@ let
     inherit inputs nixpkgs pkgs self osCrane defaultMizeConfig mize_modules;
     inherit rust-overlay crane fenix;
     localSystem = system;
+    stdenv = pkgs.stdenv;
   };
 
 in {
@@ -110,10 +111,7 @@ in {
         };
       };
 
-      webfiles = pkgs.callPackage ./webfiles.nix {
-        inherit (mizeLib) buildMizeForSystem mkInstallPhase;
-        inherit systems;
-      };
+      webfiles = mizeLib.webfiles systems;
 
       default = osCrane.buildPackage {
         src = "${self}";

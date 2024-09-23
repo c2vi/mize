@@ -8,6 +8,7 @@
 , rust-overlay
 , crane
 , fenix
+, stdenv
 , ...
 }:
 rec {
@@ -65,9 +66,10 @@ rec {
       if crossSystem.kernel.name == "windows"
         then 
           (crane.mkLib pkgs).overrideToolchain (fenix.packages.${localSystem}.combine [
-            fenix.packages.${localSystem}.minimal.rustc
-            fenix.packages.${localSystem}.minimal.cargo
-            fenix.packages.${localSystem}.targets."${crossSystem.cpu.name}-pc-windows-gnu".latest.rust-std
+            #fenix.packages.${localSystem}.minimal.rustc
+            #fenix.packages.${localSystem}.minimal.cargo
+            fenix.packages.${localSystem}.stable.toolchain
+            fenix.packages.${localSystem}.targets."${crossSystem.cpu.name}-pc-windows-gnu".stable.toolchain
           ])
 
       else if crossSystem.cpu.name == "wasm32"
@@ -80,12 +82,30 @@ rec {
         then
           builtins.trace "x86_64-linux-gnu hackfix...."
           (crane.mkLib pkgs).overrideToolchain (fenix.packages.${localSystem}.combine [
-            fenix.packages.${localSystem}.latest.toolchain
+            fenix.packages.${localSystem}.stable.toolchain
           ])
 
       else
           (crane.mkLib pkgsCross).overrideToolchain (p: p.rust-bin.stable.latest.default)
       ;
+
+  toolchain_version_drv = pkgs.stdenv.mkDerivation {
+    name = "toolchain_version_drv";
+    dontUnpack = true;
+    configurePhase = "";
+    buildPhase = ''
+      mkdir -p $out
+      touch $out/rustc-version
+
+      echo hiiiiiiiiiiiiiiiiiiiiiiii
+      #echo 'rustc 1.80.1 (3f5fd8dd4 2024-08-06)' > $out/rustc-version
+      ${craneLib.cargo}/bin/rustc --version > $out/rustc-version
+
+      exit 0
+    '';
+  };
+
+
 
     mkSelString = attrs: builtins.toJSON (attrs // {
       inherit toolchain_version;
@@ -93,30 +113,20 @@ rec {
       mize_version = main-default.version;
     });
 
-    toolchain_version_drv = pkgs.stdenv.mkDerivation {
-      name = "toolchain_version_drv";
-      dontUnpack = true;
-      configurePhase = "";
-      buildPhase = ''
-        mkdir -p $out
-        touch $out/rustc-version
 
-        echo hiiiiiiiiiiiiiiiiiiiiiiii
-        echo 'rustc 1.80.1 (3f5fd8dd4 2024-08-06)' > $out/rustc-version
-        ${craneLib.cargo}/bin/rustc --version > $out/rustc-version
-
-        exit 0
-      '';
-    };
     toolchain_version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile "${toolchain_version_drv}/rustc-version");
 
     mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation (attrs // {
-      selector_string = mkSelString attrs.select;
+      selector_string = mkSelString (attrs.select or {} // {
+        inherit (attrs) modName;
+      });
     });
 
+    ########## build Rust Module
     mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
       MIZE_BUILD_CONFIG = mizeBildConfig;
       selector_string = mkSelString (attrs.select or {} // {
+        inherit (attrs) modName;
       });
     }
 
@@ -175,6 +185,7 @@ rec {
       });
     };
 
+    ####### build mize
     main-default = craneLib.buildPackage ({
       src = "${self}";
       cargoExtraArgs = "--bin mize --features os-target";
@@ -230,8 +241,15 @@ rec {
       src = "${self}";
       CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
       doCheck = false;
-      cargoExtraArgs = "--features wasm-target";
+      cargoExtraArgs = "--features wasm-target --no-default-features";
       MIZE_BUILD_CONFIG = mizeBildConfig;
+
+      # env vars
+      #CC = "${stdenv.cc.nativePrefix}cc";
+      #AR = "${stdenv.cc.nativePrefix}ar";
+      #CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_14.clang-unwrapped}/bin/clang-14";
+      #CFLAGS_wasm32_unknown_unknown = "-I ${pkgs.llvmPackages_14.libclang.lib}/lib/clang/14.0.6/include/";
+      #AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_14.llvm}/bin/llvm-ar";
     };
 
     in rec {
@@ -274,13 +292,33 @@ rec {
 
   mkModuleInstallPhase = module: ''
     echo got module: ${module.name}
+    echo out: $out
     hash=$(echo ${module.selector_string} | sha256sum | cut -c -32)
-    mkdir -p $out/mize/dist/$hash
-    cp -r ${module}/* $out/mize/dist/$hash
+    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$hash
     echo '${module.selector_string}' > $out/mize/dist/$hash/selector
   '';
 
+  webfiles = systems: stdenv.mkDerivation {
+    name = "mize-webfiles";
+    dontUnpack = true;
 
+    # so that those binaries run on average linux-gnu systems
+    dontPatchShebangs = true;
+
+    buildPhase = ''
+    '';
+
+    installPhase = ''
+      mkdir -p $out
+      mkdir -p $out/mize
+      mkdir -p $out/mize/dist
+
+    '' + pkgs.lib.concatStringsSep "\n" (map mkInstallPhase (map buildMizeForSystem systems));
+    
+
+	  nativeBuildInputs = [
+	  ];
+  };
 }
 
 
