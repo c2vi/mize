@@ -166,6 +166,15 @@ impl ItemData {
         return ItemData (data);
     }
 
+    pub fn to_json(self) -> MizeResult<String> {
+
+        let mut result: Vec<u8> = Vec::new();
+
+        self.0.serialize(&mut serde_json::Serializer::new(&mut result))?;
+
+        Ok(String::from_utf8(result)?)
+    }
+
     pub fn merge(&mut self, other: ItemData) {
         item_data_merge(&mut self.0, &other.0);
     }

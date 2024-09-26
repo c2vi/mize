@@ -6,6 +6,11 @@ use tracing::{debug, error, info, trace, warn};
 use clap::ArgMatches;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
+use sha2::{Sha256, Sha512, Digest};
+use flate2::read::GzDecoder;
+use tar::Archive;
+use std::fs::File;
+use std::io::copy;
 
 use crate::id::MizeId;
 use crate::instance::store::Store;
@@ -129,39 +134,73 @@ pub fn seconds_since_modification(path: &Path) -> MizeResult<u64> {
     Ok(duration.as_secs())
 }
 
-fn get_correct_module_path(module_dir: &Path, name: &str) -> MizeResult<PathBuf> {
-    let mut release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("libmize_module_{}.so", name));
-    let mut debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("libmize_module_{}.so", name));
+pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemData) -> MizeResult<String> {
 
-    if !release_path.exists() && !debug_path.exists() {
-        release_path = module_dir.join("modules").join(name).join("target").join("release").join(format!("lib{}.so", name));
-        debug_path = module_dir.join("modules").join(name).join("target").join("debug").join(format!("lib{}.so", name));
-    }
+    let mut selector_data = instance.get("self/config/selector")?.as_data_full()?;
 
-    let release_modtime = match seconds_since_modification(&release_path) {
-        Ok(secs) => secs,
-        Err(e) => { return Ok(debug_path); },
-    };
+    selector_data.set_path("name", name)?;
 
-    let debug_modtime = match seconds_since_modification(&debug_path) {
-        Ok(secs) => secs,
-        Err(e) => { return Ok(release_path); },
-    };
+    selector_data.merge(options);
 
-    if seconds_since_modification(&release_path)? > seconds_since_modification(&debug_path)? {
-        return Ok(debug_path);
-    } else {
-        return Ok(release_path);
-    };
+    let selector_str = selector_data.to_json()?;
 
+    let mut hasher = Sha256::new();
+
+    hasher.update(selector_str.as_bytes());
+
+    let result = hasher.finalize();
+
+    return Ok(format!("{:02X?}", result));
+
+}
+
+fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str) -> MizeResult<()> {
+
+    let tmp_file_path_gz = format!("{}/{}.tar.gz", store_path, module_hash);
+    let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
+
+    http_req::request::get(format!("http://{}/mize/dist/{}.tar.gz", module_url, module_hash), &mut tmp_gz_file)?;
+
+    let tar = GzDecoder::new(tmp_gz_file);
+    let mut archive = Archive::new(tar);
+
+    //archive.set_mask(umask::Mode::parse("rwxrwxrwx")?.into());
+
+    let target_dir = format!("{}/modules/{}", store_path, module_hash);
+
+    std::fs::create_dir_all(target_dir.as_str())?;
+
+    archive.unpack(target_dir.as_str())?;
+
+    fs::remove_file(&tmp_file_path_gz)?;
+
+    Ok(())
 }
 
 pub fn load_module(instance: &mut Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> {
 
-    let module_dir_str = instance.get("0/config/module_dir")?.value_string()?;
-    let module_dir = Path::new(&module_dir_str);
+    let module_dir_str = instance.get(format!("0/config/module_dir/{}", name))?.value_string()?;
 
-    let module_path = get_correct_module_path(module_dir, name)?;
+    let module_path = if module_dir_str.clone().into_item_data() == ItemData::new() {
+        // if null, load it from the url
+        let module_url = instance.get("0/config/module_url")?.value_string()?;
+
+        let store_path = instance.get("self/store_path")?.value_string()?;
+
+        let module_hash = get_module_hash(instance, name, ItemData::new())?;
+
+        if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
+            // fetch module if it does not exist
+            fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str())?;
+        }
+
+        // the module_path
+        format!("{}/modules/{}/lib/libmize_module_{}.so", store_path, module_hash, name)
+
+    } else {
+        // the module_path with the module_dir from 0/config
+        format!("{}/lib/libmize_module_{}.so", module_dir_str.as_str(), name)
+    };
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 
@@ -170,8 +209,6 @@ pub fn load_module(instance: &mut Instance, name: &str, path: Option<PathBuf>) -
     let mut module: Box<dyn Module + Send + Sync> = Box::new(EmptyModule {});
 
     unsafe { func(&mut module) };
-    println!("hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii load module");
-
 
     let mut modules_inner = instance.modules.lock()?;
 

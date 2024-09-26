@@ -122,6 +122,8 @@ rec {
       });
     });
 
+
+
     ########## build Rust Module
     mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
       MIZE_BUILD_CONFIG = mizeBildConfig;
@@ -129,7 +131,6 @@ rec {
         inherit (attrs) modName;
       });
     }
-
     # linux specific stuff
     // (if crossSystem.kernel.name == "linux" then {
       "CARGO_TARGET_${builtins.replaceStrings ["-"] ["_"] (pkgsCross.lib.strings.toUpper crossSystem.nameFull)}_LINKER" = "${pkgsCross.stdenv.cc.targetPrefix}cc";
@@ -171,6 +172,8 @@ rec {
     } else {})
     );
 
+
+
     buildModule = path:  extraArgs: (pkgs.callPackage path {
       inherit mkSelString craneLib toolchain_version;
       inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative;
@@ -180,8 +183,11 @@ rec {
     mizeBildConfig = pkgs.writeTextFile {
       name = "mize-build-config";
       text = builtins.toJSON (defaultMizeConfig // {
-        inherit toolchain_version;
-        mize_version = main-default.version;
+        selector = {
+          inherit toolchain_version;
+          mize_version = main-default.version;
+          system = crossSystem.nameFull;
+          };
       });
     };
 
@@ -190,6 +196,16 @@ rec {
       src = "${self}";
       cargoExtraArgs = "--bin mize --features os-target";
       strictDeps = true;
+
+      nativeBuildInputs = [ 
+        pkgsCross.buildPackages.pkg-config
+        pkgsCross.buildPackages.nasm
+        pkgsCross.buildPackages.cmake
+      ];
+
+      buildInputs = [
+          pkgsCross.openssl
+      ];
 
       MIZE_BUILD_CONFIG = mizeBildConfig;
 
@@ -213,6 +229,8 @@ rec {
 
     main-win = craneLib.buildPackage {
       src = craneLib.cleanCargoSource ./.;
+
+      #nativeBuildInputs = [ pkgsCross.buildPackages.nasm pkgsCross.buildPackages.cmake ];
 
       strictDeps = true;
       doCheck = false;
@@ -294,7 +312,8 @@ rec {
     echo got module: ${module.name}
     echo out: $out
     hash=$(echo ${module.selector_string} | sha256sum | cut -c -32)
-    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$hash
+    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$${hash}-${module.name}
+    ${pkgs.gnutar}/bin/tar -czf $out/mize/dist/$${hash}-${module.name}.tar.gz -C ${module} .
     echo '${module.selector_string}' > $out/mize/dist/$hash/selector
   '';
 
