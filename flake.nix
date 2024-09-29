@@ -18,8 +18,7 @@
     };
 
     mize_modules = {
-      #url = "github:c2vi/mize-modules";
-      url = "git+file:///home/me/work/modules?submodules=1";
+      url = "github:c2vi/mize-modules";
       flake = false;
     };
 
