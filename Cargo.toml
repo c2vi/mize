@@ -63,7 +63,8 @@ ciborium-io = { version = "0.2.2", optional = true }
 tracing-core = { version = "0.1.32", optional = true }
 tar = { version = "0.4.42", optional = true }
 flate2 = { version = "1.0.33", optional = true }
-http_req = { version = "0.12.0", default-features = false, features = [ "native-tls" ], optional = true }
+#http_req = { version = "0.12.0", default-features = false, features = [ "rustls" ], optional = true }
+http_req = { git = "https://github.com/c2vi/http_req", optional = true, default-features = false, features = [ "native-tls" ] }
 
 # bare dependencies
 

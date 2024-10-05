@@ -15,6 +15,7 @@ use crate::error::{MizeError, MizeResult, IntoMizeResult};
 use crate::instance::{connection, Instance};
 use crate::instance::store::Store;
 use crate::id::MizeId;
+use crate::mize_err;
 use crate::proto::MizeMessage;
 use ciborium::Value as CborValue;
 use crate::instance::connection::value_raw_con_by_id;
@@ -65,12 +66,13 @@ impl Item<'_> {
                     let namespace_inner = self.instance.namespace.lock()?;
                     return Ok(ItemData::from_string(namespace_inner.as_real_string()));
                 },
-                "self_namespace" => { 
+                "self_namespace" => {
                     let namespace_inner = self.instance.self_namespace.lock()?;
                     return Ok(ItemData::from_string(namespace_inner.as_real_string()));
                 },
                 _ => {},
             }
+            return Err(mize_err!("a /self path, but the next element in the path '{:?}' is not valid", id.nth_part(1)));
         }
 
         let self_namespace_inner = self.instance.self_namespace.lock()?;
@@ -258,7 +260,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
     //trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
     //trace!("[ {} ] data_to_set: {}", "ARG".yellow(), data_to_set.clone().into_item_data());
 
-    test_println!("###########################");
+    test_println!("item_data_set_path ###########################");
     test_println!("data: {}", ItemData::from_cbor(data.clone()));
     test_println!("path: {:?}", path);
     test_println!("data_to_set: {}", ItemData::from_cbor(data_to_set.clone()));
@@ -275,7 +277,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
     };
     match data {
         CborValue::Map(ref mut map) => {
-            for (key, val) in map {
+            for (key, val) in &mut * map {
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
                         //path_iter.next();
@@ -283,6 +285,12 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
                     }
                 }
             }
+
+            // if we get here, that means, the key (which is the variable path_el) does not exist
+            // in the map
+            // so add it
+            map.push((CborValue::Text(path_el.clone()), data_to_set.to_owned()));
+            return Ok(());
         },
         CborValue::Null => {
             let mut inner_value = CborValue::Null;

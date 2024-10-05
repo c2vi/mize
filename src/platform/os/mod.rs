@@ -72,17 +72,29 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         }
     };
 
+
     ////// if a config.store_path is set, upgrade to the filestore there
     let mut test = instance.get("0")?.as_data_full()?;
     let mut store_path = match instance.get("0/config/store_path")?.value_string() {
-        Ok(path) => path,
+        Ok(path) => {
+            path
+        },
         Err(e) => {
             // the default store_path: $HOME/.mize
             let home_dir = env!("HOME");
             if home_dir == "" {
                 return Err(mize_err!("env var $HOME empty"));
             }
-            home_dir.to_owned() + "/.mize"
+
+            let store_path = home_dir.to_owned() + "/.mize";
+
+            instance.set_blocking("0/config/store_path", store_path.clone().into_item_data())?;
+
+            let store_path = instance.get("0/config/store_path")?.value_string()?;
+
+            println!("store_path: {}", store_path);
+
+            store_path
         },
     };
 
@@ -136,7 +148,7 @@ pub fn seconds_since_modification(path: &Path) -> MizeResult<u64> {
 
 pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemData) -> MizeResult<String> {
 
-    let mut selector_data = instance.get("self/config/selector")?.as_data_full()?;
+    let mut selector_data = instance.get("0/config/selector")?.as_data_full()?;
 
     selector_data.set_path("name", name)?;
 
@@ -150,16 +162,23 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
 
     let result = hasher.finalize();
 
-    return Ok(format!("{:02X?}", result));
+    let mut hex: String = result.iter()
+        .map(|b| format!("{:02x}", b).to_string())
+        .collect::<Vec<String>>()
+        .join("");
+
+    hex.truncate(32);
+
+    return Ok(hex);
 
 }
 
-fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str) -> MizeResult<()> {
+fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str) -> MizeResult<()> {
 
     let tmp_file_path_gz = format!("{}/{}.tar.gz", store_path, module_hash);
     let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
 
-    http_req::request::get(format!("http://{}/mize/dist/{}.tar.gz", module_url, module_hash), &mut tmp_gz_file)?;
+    http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
 
     let tar = GzDecoder::new(tmp_gz_file);
     let mut archive = Archive::new(tar);
@@ -177,29 +196,31 @@ fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, mod
     Ok(())
 }
 
-pub fn load_module(instance: &mut Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> {
+pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<PathBuf>) -> MizeResult<()> {
 
-    let module_dir_str = instance.get(format!("0/config/module_dir/{}", name))?.value_string()?;
+    let module_dir_str = instance.get(format!("0/config/module_dir/{}", module_name))?.value_string();
 
-    let module_path = if module_dir_str.clone().into_item_data() == ItemData::new() {
-        // if null, load it from the url
-        let module_url = instance.get("0/config/module_url")?.value_string()?;
+    let module_path = match module_dir_str {
+        Err(_) => {
+            // if null, load it from the url
+            let module_url = instance.get("0/config/module_url")?.value_string()?;
 
-        let store_path = instance.get("self/store_path")?.value_string()?;
+            let store_path = instance.get("0/config/store_path")?.value_string()?;
 
-        let module_hash = get_module_hash(instance, name, ItemData::new())?;
+            let module_hash = get_module_hash(instance, name, ItemData::new())?;
 
-        if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
-            // fetch module if it does not exist
-            fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str())?;
+            if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
+                // fetch module if it does not exist
+                fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name.as_str())?;
+            }
+
+            // the module_path
+            format!("{}/modules/{}/lib/libmize_module_{}.so", store_path, module_hash, module_name)
+        },
+        Ok(module_dir_str) => {
+            // the module_path with the module_dir from 0/config
+            format!("{}/lib/libmize_module_{}.so", module_dir_str.as_str(), module_name)
         }
-
-        // the module_path
-        format!("{}/modules/{}/lib/libmize_module_{}.so", store_path, module_hash, name)
-
-    } else {
-        // the module_path with the module_dir from 0/config
-        format!("{}/lib/libmize_module_{}.so", module_dir_str.as_str(), name)
     };
 
     let lib = unsafe { libloading::Library::new(module_path)? };

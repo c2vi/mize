@@ -174,21 +174,24 @@ rec {
 
 
 
-    buildModule = path:  extraArgs: (pkgs.callPackage path {
-      inherit mkSelString craneLib toolchain_version;
-      inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative;
-      mize_version = main-default.version;
-    } // extraArgs );
+    buildModule = path: extraArgs: let
+      pkg = (pkgs.callPackage path {
+        inherit mkSelString craneLib toolchain_version;
+        inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
+        mize_version = main-default.version;
+      } // extraArgs );
+    in pkg // {
+    };
 
-    mizeBildConfig = pkgs.writeTextFile {
-      name = "mize-build-config";
-      text = builtins.toJSON (defaultMizeConfig // {
-        selector = {
-          inherit toolchain_version;
-          mize_version = main-default.version;
-          system = crossSystem.nameFull;
-          };
-      });
+
+    mizeBildConfig = let
+      settingsFormat = pkgs.formats.toml { };
+    in settingsFormat.generate "mize-build-config.toml" {
+      config = {
+        namespace = "mize.buildtime.ns";
+        module_url = "c2vi.dev";
+        selector = builtins.fromJSON (mkSelString {});
+      };
     };
 
     ####### build mize
@@ -199,12 +202,12 @@ rec {
 
       nativeBuildInputs = [ 
         pkgsCross.buildPackages.pkg-config
-        pkgsCross.buildPackages.nasm
-        pkgsCross.buildPackages.cmake
+        #pkgsCross.buildPackages.nasm
+        #pkgsCross.buildPackages.cmake
       ];
 
       buildInputs = [
-          pkgsCross.openssl
+          (if crossSystem.nameFull == "x86_64-unknown-linux-gnu" then pkgs.openssl else pkgsCross.openssl)
       ];
 
       MIZE_BUILD_CONFIG = mizeBildConfig;
@@ -270,8 +273,60 @@ rec {
       #AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_14.llvm}/bin/llvm-ar";
     };
 
+
+
+  ################# dev Shels ################### 
+
+    mkMizeRustShell = attrs: mkMizeModuleShell (attrs // {
+      #_shell_type = "rust";
+      nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
+        (fenix.packages.${localSystem}.combine [ 
+          fenix.packages.${system}.stable.toolchain
+          fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
+          fenix.packages.${system}.stable.toolchain
+        ])
+      ];
+
+    });
+
+    mkMizeModuleShell = attrs: pkgs.mkShell (attrs // {
+      MIZE_BUILD_CONFIG = mizeBildConfig;
+    });
+
+
+    mainDevShell = pkgs.mkShell {
+        buildInputs = with pkgs; [
+
+          wasm-pack #pkg-config openssl #cargo rustc
+          cargo-generate
+          (fenix.packages.${localSystem}.combine [ 
+            fenix.packages.${system}.stable.toolchain
+            fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
+            fenix.packages.${system}.stable.toolchain
+          ])
+          openssl
+        ];
+
+        nativeBuildInputs = with pkgs; [
+         pkg-config
+        ];
+
+        MIZE_BUILD_CONFIG = mizeBildConfig;
+
+        shellHook = ''
+          export MIZE_CONFIG_FILE=${self}/test-config.toml
+        '';
+    };
+
+
+
+  ################# output attrset ################### 
+
     in rec {
       inherit toolchain_version_drv pkgsCross craneLib;
+
+      devShell = mainDevShell;
+
       main = 
         if crossSystem.kernel.name == "windows"
           then main-win
@@ -312,9 +367,9 @@ rec {
     echo got module: ${module.name}
     echo out: $out
     hash=$(echo ${module.selector_string} | sha256sum | cut -c -32)
-    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$${hash}-${module.name}
-    ${pkgs.gnutar}/bin/tar -czf $out/mize/dist/$${hash}-${module.name}.tar.gz -C ${module} .
-    echo '${module.selector_string}' > $out/mize/dist/$hash/selector
+    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$hash-${module.modName}
+    ${pkgs.gnutar}/bin/tar -czf $out/mize/dist/$hash-${module.modName}.tar.gz -C ${module} .
+    echo '${module.selector_string}' > $out/mize/dist/$hash-${module.modName}/selector
   '';
 
   webfiles = systems: stdenv.mkDerivation {
@@ -338,6 +393,11 @@ rec {
 	  nativeBuildInputs = [
 	  ];
   };
+
+  moduleShells = system: let
+    mizeFor = buildMizeForSystem system;
+  in builtins.listToAttrs ( map ( mod: { name = mod.modName; value = (mod.devShell); } ) mizeFor.modulesList );
+
 }
 
 

@@ -66,6 +66,9 @@ fn main() {
         // mi gui
         Some(("gui", sub_matches)) => cli::gui(sub_matches),
 
+        // mi format-cbor
+        Some(("format-cbor", sub_matches)) => cli::format_cbor(sub_matches),
+
         // some unknown command passed
         Some((cmd, sub_matches)) => Err(MizeError::new().msg(format!("The subcommand: {} is not known. use --help to list availavle commands", cmd))),
 
@@ -166,6 +169,9 @@ fn cli_matches() -> clap::ArgMatches {
             )
         .subcommand(
                 Command::new("gui")
+            )
+        .subcommand(
+                Command::new("format-cbor")
             )
         .arg_required_else_help(true);
 

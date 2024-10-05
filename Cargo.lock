@@ -898,8 +898,7 @@ checksum = "add0ab9360ddbd88cfeb3bd9574a1d85cfdfa14db10b3e21d3700dbc4328758f"
 [[package]]
 name = "http_req"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92208b0986f414edaca8ede2c6962c979309346a9e8e19d07d0a7879aae1549e"
+source = "git+https://github.com/c2vi/http_req#46b0f93087ef6f68a360b303192e30ecb7b055e2"
 dependencies = [
  "native-tls",
  "unicase",

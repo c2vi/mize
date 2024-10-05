@@ -6,6 +6,47 @@ use crate::item::IntoItemData;
 use super::*;
 
 #[test]
+fn test_get_module_hash() -> MizeResult<()> {
+    let mut instance = Instance::empty()?;
+
+    use crate::platform::os::get_module_hash;
+    let selector_toml = r#"
+        mize_version = "0.0.0"
+        system = "x86_64-unknown-linux-gnu"
+        toolchain_version = "rustc 1.78.0 (9b00956e5 2024-04-29)"
+    "#;
+
+    instance.set_blocking("0/config/selector", ItemData::from_toml(&selector_toml)?)?;
+
+    let hash = get_module_hash(&mut instance, "String", ItemData::new())?;
+
+    test_println!("hash: {}", hash);
+
+    assert_eq!(hash, "e96edf60216688314efc263c1aa8d6ce".to_owned());
+
+    Ok(())
+}
+
+#[test]
+fn test_set_store_path() -> MizeResult<()> {
+    let instance = Instance::empty()?;
+
+    let store_path = "/home/me/.mize".to_owned();
+
+    let config = instance.get("0/config")?.as_data_full()?;
+
+    test_println!("data at 0/config: {}", config);
+
+    instance.set_blocking("0/config/store_path", store_path.clone().into_item_data())?;
+
+    let store_path_new = instance.get("0/config/store_path")?.value_string()?;
+
+    assert_eq!(store_path_new, store_path);
+
+    Ok(())
+}
+
+#[test]
 fn test_set_sub_path() -> MizeResult<()> {
     let instance = Instance::empty()?;
 

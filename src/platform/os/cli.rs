@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 use home::home_dir;
 use crossbeam::channel::bounded;
+use std::io::Read;
 
 use mize::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};
 use mize::instance::Instance;
@@ -9,7 +10,7 @@ use mize::platform::os::config_from_cli_args;
 use mize::instance::subscription::Update;
 use mize::platform::os::fsstore::FileStore;
 use mize::instance::subscription::Subscription;
-use mize::item::IntoItemData;
+use mize::item::{IntoItemData, ItemData};
 
 
 
@@ -141,7 +142,20 @@ pub fn gui(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
+pub fn format_cbor(sub_matches: &ArgMatches) -> MizeResult<()> {
 
+    let mut input: Vec<u8> =  Vec::new();
+    let stdin = std::io::stdin();
+    let mut handle = stdin.lock();
+    //handle.read_to_end(&mut input);
+
+    let cbor_data = ciborium::from_reader(handle)?;
+    let item_data = ItemData::from_cbor(cbor_data);
+
+    println!("{}", item_data);
+
+    Ok(())
+}
 
 
 

@@ -18,7 +18,7 @@
     };
 
     mize_modules = {
-      url = "github:c2vi/mize-modules";
+      url = "github:c2vi/mize-modules?submodules=1";
       flake = false;
     };
 
@@ -30,12 +30,13 @@
 let
   pkgs = nixpkgs.legacyPackages.${system};
   wasmToolchain = fenix.packages.${system}.combine [
-    fenix.packages.${system}.targets.wasm32-unknown-unknown.latest.toolchain
-    fenix.packages.${system}.latest.toolchain
+    fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
+    fenix.packages.${system}.stable.toolchain
   ];
   wasmCrane = (crane.mkLib pkgs).overrideToolchain wasmToolchain;
 
-  osToolchain = fenix.packages.${system}.latest.toolchain;
+  osToolchain = fenix.packages.${system}.stable.toolchain;
+
   osCrane = (crane.mkLib pkgs).overrideToolchain osToolchain;
 
   #winToolchain = fenix.packages.${system}.combine [
@@ -152,6 +153,10 @@ in {
 ############################## DEV SHELLS ##############################
     devShells = {
 
+      modules = mizeLib.moduleShells system;
+
+      modulesCross = pkgs.lib.genAttrs systems (system: mizeLib.moduleShells system);
+
       one = pkgs.stdenv.mkDerivation {
         name = "hiiiiiiii";
         nativeBuildInputs = [
@@ -213,24 +218,7 @@ in {
       };
 
 
-      default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-
-          wasm-pack #pkg-config openssl #cargo rustc
-          cargo-generate
-          (fenix.packages.${system}.combine [ wasmToolchain osToolchain ])
-          lldb gdb
-        ];
-
-        MIZE_BUILD_CONFIG = pkgs.writeTextFile {
-          name = "vic-build-config";
-          text = builtins.toJSON defaultMizeConfig;
-        };
-
-        shellHook = ''
-          export MIZE_CONFIG_FILE=${self}/test-config.toml
-        '';
-      };
+      default = (mizeLib.buildMizeForSystem system).devShell;
     };
 
   }) // {

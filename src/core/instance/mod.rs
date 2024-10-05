@@ -129,6 +129,11 @@ impl Instance {
         //instance.spawn("msg_thread", closure)?;
 
 
+        // load the config from build time
+        let config = ItemData::from_toml(BUILD_TIME_CONFIG)?;
+        instance.set_blocking("0", config);
+
+
         return Ok(instance);
     }
 
@@ -146,12 +151,8 @@ impl Instance {
 
     fn init(&mut self) -> MizeResult<()> {
 
-        // load the config from build time
-        let config = ItemData::from_toml(BUILD_TIME_CONFIG)?;
-        self.set_blocking("0", config);
-
         // platform specific init code
-        crate::platform::any::instance_init(self);
+        crate::platform::any::instance_init(self)?;
 
         // end of platform specific init code
 

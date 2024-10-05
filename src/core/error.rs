@@ -7,12 +7,13 @@ use std::io;
 use colored::Colorize;
 use tracing::{trace, debug, info, warn, error};
 
+use crate::proto::MizeMessage;
+
+
 #[macro_export]
 macro_rules! mize_err {
     ($($arg:tt)*) => { MizeError::new().msg(format!( $($arg)*)) };
 }
-
-use crate::proto::MizeMessage;
 
 pub type MizeResult<T> = Result<T, MizeError>;
 
@@ -32,6 +33,7 @@ pub struct MizeError {
     pub messages: Vec<String>,
     pub caused_by_msg: Option<CausedByMessage>,
     pub code_location: Option<MizeCodeLocation>,
+    pub backtrace: String,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +87,7 @@ impl MizeError {
             messages: Vec::new(),
             caused_by_msg: None,
             code_location: Some(caller_location.into()),
+            backtrace: format!("{}", std::backtrace::Backtrace::capture()),
         }
     }
 
@@ -110,12 +113,17 @@ impl MizeError {
 
     pub fn log(self) -> MizeError {
         error!("MizeError envountered!");
+
         if let Some(ref location) = self.code_location {
             error!("[ {} ] {}", "LOCATION".yellow(), location);
         };
+
+        error!("[ {} ] {}", "BACKTRACE".yellow(), self.backtrace);
+
         for msg in &self.messages {
             error!("[ {} ] {}", "MSG".yellow(), msg);
         }
+
         self
     }
 
@@ -258,6 +266,7 @@ fn get_error_by_code(code: u32, caller_location: &std::panic::Location) -> MizeE
         messages: Vec::new(),
         caused_by_msg: None,
         code_location: Some(caller_location.into()),
+        backtrace: format!("{}", std::backtrace::Backtrace::capture()),
     };
 
     match code {

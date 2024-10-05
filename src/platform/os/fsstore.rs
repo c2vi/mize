@@ -111,7 +111,8 @@ impl Store for FileStore {
         if !file_path.exists() {
             
         }
-        let file = OpenOptions::new().read(true).open(file_path)?;
+        let file = OpenOptions::new().read(true).open(file_path.clone())
+            .map_err(|e| mize_err!("fsstoree: Unable to open '{}', err: {}", file_path.display(), e))?;
 
         let cbor_value: CborValue = ciborium::from_reader(file)
             .mize_result_msg(format!("could not read file '{}' from FileStore", self.path.join("store").join(id.store_part()).display()))?;
