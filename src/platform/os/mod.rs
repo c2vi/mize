@@ -7,7 +7,7 @@ use clap::ArgMatches;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use sha2::{Sha256, Sha512, Digest};
-use flate2::read::GzDecoder;
+use flate2::bufread::GzDecoder;
 use tar::Archive;
 use std::fs::File;
 use std::io::copy;
@@ -177,19 +177,28 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
 
 fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str, module_selector: &str) -> MizeResult<()> {
 
+
     let tmp_file_path_gz = format!("{}/{}.tar.gz", store_path, module_hash);
-    let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
 
-    debug!("fetching module '{}' with hash: {}", module_name, module_hash);
+     let tmp_gz_file = if !PathBuf::from(tmp_file_path_gz.clone()).exists() {
 
-    let response = http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
+        let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
 
-    let code = response.status_code();
-    if code != 200.into() {
-        return Err(mize_err!("failed to get module '{}' with hash '{}' and selector: {}", module_name, module_hash, module_selector).msg(format!("the http request to fetch the module returned a status code of: {}", code)));
-    }
+        debug!("fetching module '{}' with hash: {}", module_name, module_hash);
 
-    let tar = GzDecoder::new(tmp_gz_file);
+        let response = http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
+
+        let code = response.status_code();
+        if code != 200.into() {
+            return Err(mize_err!("failed to get module '{}' with hash '{}' and selector: {}", module_name, module_hash, module_selector).msg(format!("the http request to fetch the module returned a status code of: {}", code)));
+        }
+
+        tmp_gz_file
+    } else {
+        std::fs::File::open(tmp_file_path_gz.clone())?
+    };
+
+    let tar = GzDecoder::new(std::io::BufReader::new(tmp_gz_file));
     let mut archive = Archive::new(tar);
 
     //archive.set_mask(umask::Mode::parse("rwxrwxrwx")?.into());
@@ -218,7 +227,9 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
             let (module_hash, module_selector) = get_module_hash(instance, module_name, ItemData::new())?;
 
-            if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
+            if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists()
+                || !PathBuf::from(format!("{}/modules/{}/lib/libmize_module_{}.so", store_path.as_str(), module_hash.as_str(), module_name)).exists()
+            {
                 // fetch module if it does not exist
                 fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name, module_selector.as_str())?;
             }

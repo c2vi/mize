@@ -363,13 +363,15 @@ rec {
 
   mkModulesInstallPhase = modules: pkgs.lib.concatStringsSep "\n" (map mkModuleInstallPhase modules);
 
-  mkModuleInstallPhase = module: ''
+  mkModuleInstallPhase = module: let
+   hash = builtins.substring 0 32 (builtins.hashString "sha256" module.selector_string);
+  in ''
     echo got module: ${module.name}
     echo out: $out
-    hash=$(echo ${module.selector_string} | sha256sum | cut -c -32)
-    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/$hash-${module.modName}
-    ${pkgs.gnutar}/bin/tar -czf $out/mize/dist/$hash-${module.modName}.tar.gz -C ${module} .
-    echo '${module.selector_string}' > $out/mize/dist/$hash-${module.modName}/selector
+    echo hash: ${hash}
+    cp --no-preserve=mode,ownership -r ${module}/* $out/mize/dist/${hash}-${module.modName}
+    ${pkgs.gnutar}/bin/tar -czf $out/mize/dist/${hash}-${module.modName}.tar.gz -C ${module} .
+    echo '${module.selector_string}' > $out/mize/dist/${hash}-${module.modName}/selector
   '';
 
   webfiles = systems: stdenv.mkDerivation {
