@@ -146,19 +146,21 @@ pub fn seconds_since_modification(path: &Path) -> MizeResult<u64> {
     Ok(duration.as_secs())
 }
 
-pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemData) -> MizeResult<String> {
+pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemData) -> MizeResult<(String, String)> {
 
     let mut selector_data = instance.get("0/config/selector")?.as_data_full()?;
 
-    selector_data.set_path("name", name)?;
+    selector_data.set_path("modName", name)?;
 
     selector_data.merge(options);
+
+    selector_data.sort_keys();
 
     let selector_str = selector_data.to_json()?;
 
     let mut hasher = Sha256::new();
 
-    hasher.update(selector_str.as_bytes());
+    hasher.update(selector_str.clone().as_bytes());
 
     let result = hasher.finalize();
 
@@ -169,16 +171,23 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
 
     hex.truncate(32);
 
-    return Ok(hex);
+    return Ok((hex, selector_str));
 
 }
 
-fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str) -> MizeResult<()> {
+fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str, module_selector: &str) -> MizeResult<()> {
 
     let tmp_file_path_gz = format!("{}/{}.tar.gz", store_path, module_hash);
     let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
 
-    http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
+    debug!("fetching module '{}' with hash: {}", module_name, module_hash);
+
+    let response = http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
+
+    let code = response.status_code();
+    if code != 200.into() {
+        return Err(mize_err!("failed to get module '{}' with hash '{}' and selector: {}", module_name, module_hash, module_selector).msg(format!("the http request to fetch the module returned a status code of: {}", code)));
+    }
 
     let tar = GzDecoder::new(tmp_gz_file);
     let mut archive = Archive::new(tar);
@@ -207,11 +216,11 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
             let store_path = instance.get("0/config/store_path")?.value_string()?;
 
-            let module_hash = get_module_hash(instance, name, ItemData::new())?;
+            let (module_hash, module_selector) = get_module_hash(instance, module_name, ItemData::new())?;
 
             if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
                 // fetch module if it does not exist
-                fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name.as_str())?;
+                fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name, module_selector.as_str())?;
             }
 
             // the module_path
@@ -225,7 +234,7 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 
-    let func: libloading::Symbol<unsafe extern "C" fn(&mut Box<dyn Module + Send + Sync>) -> ()> = unsafe { lib.get(format!("get_mize_module_{}", name).as_bytes())? };
+    let func: libloading::Symbol<unsafe extern "C" fn(&mut Box<dyn Module + Send + Sync>) -> ()> = unsafe { lib.get(format!("get_mize_module_{}", module_name).as_bytes())? };
 
     let mut module: Box<dyn Module + Send + Sync> = Box::new(EmptyModule {});
 
@@ -235,7 +244,7 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
     module.init(&instance);
 
-    modules_inner.insert(name.to_owned(), module);
+    modules_inner.insert(module_name.to_owned(), module);
 
     unsafe {
         // dropping the lib, would (i suspect) free all memory, of the library's code, which would

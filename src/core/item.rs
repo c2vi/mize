@@ -189,6 +189,10 @@ impl ItemData {
         ItemData (cbor)
     }
 
+    pub fn sort_keys(&mut self) -> MizeResult<()> {
+        item_data_sort_keys(&mut self.0)
+    }
+
     pub fn null() -> CborValue {
         CborValue::Null
     }
@@ -252,6 +256,38 @@ pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&Cb
         },
     };
     item_data_get_path(sub_data, path_iter.collect())
+}
+
+pub fn item_data_sort_keys(data: &mut CborValue) -> MizeResult<()> {
+
+    // for a list, sort each item of the list
+    if data.is_array() {
+        for el in data.as_array_mut().unwrap().iter_mut() {
+            item_data_sort_keys(el)?
+        }
+    }
+
+    // sort the keys of a map
+    if data.is_map() {
+        let map: &mut Vec<(CborValue, CborValue)> = data.as_map_mut().unwrap();
+        //map.sort_by_key(|el| el.0);
+        map.sort_by(|a,b| {
+            match a.0.partial_cmp(&b.0) {
+                Some(val) => val,
+                None => {
+                    // just say the two values are equal, if they can't be ordered
+                    std::cmp::Ordering::Equal
+                }
+            }
+        });
+
+        // also sort every sub value
+        for (key, val) in map {
+            item_data_sort_keys(val)?
+        }
+    }
+
+    Ok(())
 }
 
 pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &CborValue) -> MizeResult<()> {

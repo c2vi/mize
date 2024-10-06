@@ -5,6 +5,40 @@ use crate::item::IntoItemData;
 
 use super::*;
 
+
+#[test]
+fn test_sort_keys() -> MizeResult<()> {
+
+    let mut data = ItemData::from_toml(r#"
+        [hi]
+        test = 4
+
+        [config]
+        zzz = "hiiii"
+        hi = "hello from config/hi"
+
+        [config.test]
+        inner = "inner"
+    "#)?;
+
+    let data_sorted = ItemData::from_toml(r#"
+        [config]
+        hi = "hello from config/hi"
+        test = { inner = "inner" }
+        zzz = "hiiii"
+
+        [hi]
+        test = 4
+    "#)?;
+
+    data.sort_keys()?;
+
+    assert_eq!(data.to_json()?, data_sorted.to_json()?);
+
+
+    Ok(())
+}
+
 #[test]
 fn test_get_module_hash() -> MizeResult<()> {
     let mut instance = Instance::empty()?;
@@ -18,9 +52,10 @@ fn test_get_module_hash() -> MizeResult<()> {
 
     instance.set_blocking("0/config/selector", ItemData::from_toml(&selector_toml)?)?;
 
-    let hash = get_module_hash(&mut instance, "String", ItemData::new())?;
+    let (hash, selector) = get_module_hash(&mut instance, "String", ItemData::new())?;
 
     test_println!("hash: {}", hash);
+    test_println!("selector: {}", selector);
 
     assert_eq!(hash, "e96edf60216688314efc263c1aa8d6ce".to_owned());
 
