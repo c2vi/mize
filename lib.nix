@@ -130,6 +130,18 @@ rec {
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;
       });
+
+      # rename the so library, in case the lib.name in your Cargo.toml is not like mize_module_mylib
+      postInstall = (attrs.postInstall or "") + ''
+        if [ ! -f "$out/lib/libmize_module_${attrs.modName}" ]; then
+          echo RENAMING $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so
+          mv $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so || true
+
+          echo RENAMING $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a
+          mv $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a && true # ignore if there is no .a file || true
+          echo "$FILE"
+        fi
+      '';
     }
     # linux specific stuff
     // (if crossSystem.kernel.name == "linux" then {
@@ -280,12 +292,28 @@ rec {
     mkMizeRustShell = attrs: mkMizeModuleShell (attrs // {
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
-        (fenix.packages.${localSystem}.combine [ 
-          fenix.packages.${system}.stable.toolchain
-          fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
-          fenix.packages.${system}.stable.toolchain
+        (fenix.packages."x86_64-linux".combine [ 
+          fenix.packages."x86_64-linux".stable.toolchain
+          fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.stable.toolchain
+          fenix.packages."x86_64-linux".stable.toolchain
         ])
+
+        # the shell script, to mk the dist folder, for a standard rust module
+        (pkgs.writeShellApplication {
+          name = "mkdist";
+          # should we use the folder, that cargo locate-project gives us??? or just cp ./target/debug/
+          text = ''
+            mkdir -p ./dist
+            mkdir -p ./dist/lib
+            
+            cp ./target/debug/libmize_module*.so ./dist/lib
+            cp ./target/debug/libmize_module*.a ./dist/lib || true
+
+          '';
+        })
       ];
+
+
 
     });
 
