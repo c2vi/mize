@@ -253,7 +253,7 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
     let mut modules_inner = instance.modules.lock()?;
 
-    module.init(&instance);
+    module.init(&instance)?;
 
     modules_inner.insert(module_name.to_owned(), module);
 
