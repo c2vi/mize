@@ -298,7 +298,11 @@ fn config_from_string(config_string: String) -> MizeResult<ItemData> {
 
     let mut config = ItemData::new();
 
-    for option in config_string.split(";") {
+    for option in config_string.split(":") {
+        if option == "".to_owned() {
+            continue;
+        }
+
         let path = option.split("=").nth(0)
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing beforee =)", option)))?;
         let value = option.split("=").nth(1)
