@@ -23,8 +23,8 @@ rec {
       mkdir -p $out
       touch $out/modules_to_build
 
-      for d in ${path}/modules/*; do
-        [[ -f $d/mize_module.nix ]] && (echo "$d/mize_module.nix" >> $out/modules_to_build; echo found module $d/mize_module.nix)
+      find . -not -type d -name mize_module.nix | while read p
+        (echo "$d/mize_module.nix" >> $out/modules_to_build; echo found module $d/mize_module.nix)
       done
 
       exit 0
