@@ -13,35 +13,8 @@
 }:
 rec {
 
-  # get a list of all modules
-  # aka folders with a mize_module.nix in them
-  module_list_drv = path: pkgs.stdenv.mkDerivation {
-    name = "mize_module_list";
-    dontUnpack = true;
-    configurePhase = "";
-    buildPhase = ''
-      mkdir -p $out
-      touch $out/modules_to_build
 
-      find . -not -type d -name mize_module.nix | while read p
-        (echo "$d/mize_module.nix" >> $out/modules_to_build; echo found module $d/mize_module.nix)
-      done
-
-      exit 0
-    '';
-  };
-  findModules = path: let
-    module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
-    module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
-    in module_list;
-
-
-  findModulesNix = path: let
-    dirs = builtins.readDir path;
-    filtered_dirs = map (dir: builtins.trace "dir: ${dir}" (dir));
-    module_list = filtered_dirs;
-    in module_list;
-
+  
 
   getCrossSystem = system: let
     crossSystem = (if builtins.isString system then (pkgs.lib.systems.parse.mkSystemFromString system) else system)
@@ -61,6 +34,45 @@ rec {
     pkgsCross = import nixpkgs { inherit localSystem crossSystem; overlays = [ rust-overlay.overlays.default ]; };
 
     pkgsNative = import nixpkgs { inherit localSystem; overlays = [ rust-overlay.overlays.default ]; };
+
+    # get a list of all modules
+    # aka folders with a mize_module.nix in them
+    module_list_drv = path: pkgs.stdenv.mkDerivation {
+      name = "mize_module_list";
+      dontUnpack = true;
+      configurePhase = "";
+      buildPhase = ''
+        mkdir -p $out
+        touch $out/modules_to_build
+
+        find ${path} -not -type d -name mize_module.nix | while read p; do
+          (echo "$p" >> $out/modules_to_build; echo "found module $p")
+        done
+
+        exit 0
+      '';
+    };
+
+    mizeMdules = let
+      from_mize_modules_repo = findModules mize_modules;
+      mize_module_path = builtins.getEnv "MIZE_MODULE_PATH";
+      mize_module_no_repo = builtins.getEnv "MIZE_MODULE_NO_REPO";
+      dirs_from_path = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString ":" mize_module_path);
+      dirs_in_nix_store = map (path: builtins.fetchGit {
+          url = path;
+        }) dirs_from_path;
+      from_env_var = map findModules dirs_in_nix_store;
+      in pkgs.lib.lists.flatten ((if mize_module_no_repo != "" then [] else from_mize_modules_repo) ++ from_env_var);
+
+
+    findModules = path: let
+      module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
+      module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
+      getExternals = path: map findModules ((pkgs.callPackage ((import path).externals or (args: [])) {}));
+      in ( builtins.trace "module_list: ${pkgs.lib.strings.concatStringsSep " --- " module_list}" module_list) ++ (map getExternals module_list);
+
+
+
 
     craneLib = 
       if crossSystem.kernel.name == "windows"
@@ -186,13 +198,16 @@ rec {
 
 
 
-    buildModule = path: extraArgs: let
-      pkg = (pkgs.callPackage path {
+    buildModule = path: extraArgs: pkgs.callPackage ((import path).module or (attrs: null)) ({
         inherit mkSelString craneLib toolchain_version;
         inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
         mize_version = main-default.version;
       } // extraArgs );
-    in pkg // {
+
+    buildLib = path: extraArgs: pkgs.callPackage ((import path).lib or (args: {})) {
+        inherit mkSelString craneLib toolchain_version;
+        inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
+        mize_version = main-default.version;
     };
 
 
@@ -366,8 +381,10 @@ rec {
       system = crossSystem;
 
       modulesListDrv = module_list_drv mize_modules;
-      modulesFileList = pkgs.lib.lists.flatten (findModules mize_modules);
-      modulesList = map (mod: (buildModule mod {})) modulesFileList;
+      modulesFileList = mizeMdules;
+      modulesLibList = map (mod: buildLib mod {}) modulesFileList;
+      modulesLib = pkgs.lib.lists.foldr (a: b: b // a) {} modulesLibList;
+      modulesList = pkgs.lib.lists.remove null (map (mod: (buildModule mod {})) modulesFileList);
 
       modules = builtins.listToAttrs ( map ( mod: { name = mod.modName; value = mod; } ) modulesList );
   };
