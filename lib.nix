@@ -62,14 +62,15 @@ rec {
           url = path;
         }) dirs_from_path;
       from_env_var = map findModules dirs_in_nix_store;
-      in pkgs.lib.lists.flatten ((if mize_module_no_repo != "" then [] else from_mize_modules_repo) ++ from_env_var);
+      in pkgs.lib.lists.flatten (from_env_var ++ (if mize_module_no_repo != "" then [] else from_mize_modules_repo));
 
 
     findModules = path: let
+      mize_module_no_externals = builtins.getEnv "MIZE_MODULE_NO_Externals";
       module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
       module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
       getExternals = path: map findModules ((pkgs.callPackage ((import path).externals or (args: [])) {}));
-      in ( builtins.trace "module_list: ${pkgs.lib.strings.concatStringsSep " --- " module_list}" module_list) ++ (map getExternals module_list);
+      in  module_list ++ (if mize_module_no_externals != "" then [] else (map getExternals module_list));
 
 
 
@@ -128,11 +129,13 @@ rec {
 
     toolchain_version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile "${toolchain_version_drv}/rustc-version");
 
-    mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation (attrs // {
+    mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation ({
+      name = attrs.modName;
+      inherit (attrs) modName;
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;
       });
-    });
+    } // attrs);
 
 
 
@@ -384,7 +387,7 @@ rec {
       modulesFileList = mizeMdules;
       modulesLibList = map (mod: buildLib mod {}) modulesFileList;
       modulesLib = pkgs.lib.lists.foldr (a: b: b // a) {} modulesLibList;
-      modulesList = pkgs.lib.lists.remove null (map (mod: (buildModule mod {})) modulesFileList);
+      modulesList = pkgs.lib.lists.remove null (map (mod: (buildModule mod modulesLib)) modulesFileList);
 
       modules = builtins.listToAttrs ( map ( mod: { name = mod.modName; value = mod; } ) modulesList );
   };
