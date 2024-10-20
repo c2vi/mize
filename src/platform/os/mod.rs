@@ -241,11 +241,11 @@ pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<Path
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 
-    let func: libloading::Symbol<unsafe extern "C" fn(&mut Box<dyn Module + Send + Sync>) -> ()> = unsafe { lib.get(format!("get_mize_module_{}", module_name).as_bytes())? };
+    let func: libloading::Symbol<unsafe extern "C" fn(&mut Box<dyn Module + Send + Sync>, Instance) -> ()> = unsafe { lib.get(format!("get_mize_module_{}", module_name).as_bytes())? };
 
     let mut module: Box<dyn Module + Send + Sync> = Box::new(EmptyModule {});
 
-    unsafe { func(&mut module) };
+    unsafe { func(&mut module, instance.clone()) };
 
     let mut modules_inner = instance.modules.lock()?;
 
