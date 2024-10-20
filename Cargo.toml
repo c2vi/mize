@@ -39,6 +39,7 @@ serde_json = { version = "1.0.117", optional = false }
 crossbeam = "0.8.4"
 toml = { version = "0.8.13", features = ["parse"], optional = false }
 dyn-clone = "1.0.17"
+sha2 = "0.10.8"
 
 # buildin modules
 #mize_module_blob = { path = "./modules/modules/Blob" }
@@ -72,7 +73,6 @@ http_req = { git = "https://github.com/c2vi/http_req", optional = true, default-
 axum = { version = "0.6.1", features = ["ws", "headers"], optional = true }
 axum-extra = { version = "0.4.2", features = ["spa"], optional = true }
 axum-macros = { version = "0.3.0", optional = true }
-sha2 = "0.10.8"
 #tokio-core = "0.1.18"
 #tokio-io = "0.1.13"
 

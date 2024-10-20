@@ -57,6 +57,7 @@ pub mod platform {
     pub mod os;
 
     pub mod any {
+        //////////// instance_init
         #[cfg(feature = "wasm-target")]
         pub use super::wasm::wasm_instance_init as instance_init;
 
@@ -67,6 +68,7 @@ pub mod platform {
         pub use super::super::instance_init;
 
 
+        //////////// load_module
         #[cfg(feature = "os-target")]
         pub use super::os::load_module;
 
@@ -76,6 +78,17 @@ pub mod platform {
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::load_module;
 
+
+        //////////// fetch_module
+        #[cfg(feature = "os-target")]
+        pub use super::os::fetch_module;
+
+        #[cfg(feature = "wasm-target")]
+        pub use super::super::fetch_module;
+
+        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        pub use super::super::fetch_module;
+
     }
 }
 
@@ -84,5 +97,7 @@ pub fn instance_init(instance: &mut core::instance::Instance) {}
 
 
 pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> { Ok(()) }
+
+pub fn fetch_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<String> { Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned()) }
 
 

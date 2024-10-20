@@ -298,8 +298,12 @@ impl Instance {
     }
 
     pub fn load_module(&mut self, name: &str) -> MizeResult<()> {
-        // platform specific init code
         crate::platform::any::load_module(self, name, None)
+    }
+
+    pub fn fetch_module(&mut self, name: &str) -> MizeResult<String> {
+        // platform specific way to fetch a module
+        crate::platform::any::fetch_module(self, name)
     }
 
     pub fn load_module_at(&mut self, name: &str, path: PathBuf) -> MizeResult<()> {

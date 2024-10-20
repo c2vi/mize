@@ -175,7 +175,7 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
 
 }
 
-fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str, module_selector: &str) -> MizeResult<()> {
+fn download_module(instance: &mut Instance, store_path: &str, module_url: &str, module_hash: &str, module_name: &str, module_selector: &str) -> MizeResult<()> {
 
 
     let tmp_file_path_gz = format!("{}/{}.tar.gz", store_path, module_hash);
@@ -184,7 +184,7 @@ fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, mod
 
         let mut tmp_gz_file = File::create(&tmp_file_path_gz)?;
 
-        debug!("fetching module '{}' with hash: {}", module_name, module_hash);
+        debug!("downloading module '{}' with hash: {}", module_name, module_hash);
 
         let response = http_req::request::get(format!("http://{}/mize/dist/{}-{}.tar.gz", module_url, module_hash, module_name), &mut tmp_gz_file)?;
 
@@ -214,34 +214,30 @@ fn fetch_module(instance: &mut Instance, store_path: &str, module_url: &str, mod
     Ok(())
 }
 
-pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<PathBuf>) -> MizeResult<()> {
+pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<String> {
 
-    let module_dir_str = instance.get(format!("0/config/module_dir/{}", module_name))?.value_string();
+    if let Ok(module_path) = instance.get(format!("0/config/module_dir/{}", module_name))?.value_string() {
+        return Ok(module_path);
+    } else {
+        // if null, load it from the url
+        let module_url = instance.get("0/config/module_url")?.value_string()?;
 
-    let module_path = match module_dir_str {
-        Err(_) => {
-            // if null, load it from the url
-            let module_url = instance.get("0/config/module_url")?.value_string()?;
+        let store_path = instance.get("0/config/store_path")?.value_string()?;
 
-            let store_path = instance.get("0/config/store_path")?.value_string()?;
+        let (module_hash, module_selector) = get_module_hash(instance, module_name, ItemData::new())?;
 
-            let (module_hash, module_selector) = get_module_hash(instance, module_name, ItemData::new())?;
-
-            if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists()
-                || !PathBuf::from(format!("{}/modules/{}/lib/libmize_module_{}.so", store_path.as_str(), module_hash.as_str(), module_name)).exists()
-            {
-                // fetch module if it does not exist
-                fetch_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name, module_selector.as_str())?;
-            }
-
-            // the module_path
-            format!("{}/modules/{}/lib/libmize_module_{}.so", store_path, module_hash, module_name)
-        },
-        Ok(module_dir_str) => {
-            // the module_path with the module_dir from 0/config
-            format!("{}/lib/libmize_module_{}.so", module_dir_str.as_str(), module_name)
+        if !PathBuf::from(format!("{}/modules/{}", store_path, module_hash.as_str())).exists() {
+            // download module if it does not exist
+            download_module(instance, store_path.as_str(), module_url.as_str(), module_hash.as_str(), module_name, module_selector.as_str())?;
         }
-    };
+
+        return Ok(format!("{}/modules/{}", store_path, module_hash.as_str()));
+    }
+}
+
+pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<PathBuf>) -> MizeResult<()> {
+    
+    let module_path = format!("{}/lib/libmmize_module_{}.so", fetch_module(instance, module_name)?, module_name);
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 
