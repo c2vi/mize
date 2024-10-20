@@ -288,21 +288,36 @@ rec {
       ];
     };
 
-    main-wasm = craneLib.buildPackage {
-      src = "${self}";
+
+    # - https://github.com/ipetkov/crane/issues/362#issuecomment-1683220603
+    wasmArtifacts = craneLib.buildDepsOnly ({
+      src = self;
+      doCheck = false; # tests does not work in wasm
       CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-      doCheck = false;
       cargoExtraArgs = "--features wasm-target --no-default-features";
+    });
+    main-wasm = craneLib.mkCargoDerivation {
+      name = "mize-npm-package";
+
+      # i can't use CARGO_BUILD_TARGET to set the target
+      # because then the cargo install run by wasm-pack tries to build the wasm-bindgen-cli for a wasm target...
+
+
+      src = self;
+
+      cargoArtifacts = wasmArtifacts;
+      doCheck = false;
+
+      buildPhaseCargoCommand = ''
+          mkdir -p $out/pkg
+
+          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --out-dir $out/pkg --scope=c2vi -- --features wasm-target --no-default-features
+      '';
+
+      buildInputs = with pkgsNative; [ wasm-bindgen-cli binaryen wasm-pack ];
+
       MIZE_BUILD_CONFIG = mizeBildConfig;
-
-      # env vars
-      #CC = "${stdenv.cc.nativePrefix}cc";
-      #AR = "${stdenv.cc.nativePrefix}ar";
-      #CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_14.clang-unwrapped}/bin/clang-14";
-      #CFLAGS_wasm32_unknown_unknown = "-I ${pkgs.llvmPackages_14.libclang.lib}/lib/clang/14.0.6/include/";
-      #AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_14.llvm}/bin/llvm-ar";
     };
-
 
 
   ################# dev Shels ################### 

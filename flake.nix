@@ -133,16 +133,18 @@ in {
 
         # i can't use CARGO_BUILD_TARGET to set the target
         # because then the cargo install run by wasm-pack tries to build the wasm-bindgen-cli for a wasm target...
-        cargoExtraArgs = "--target wasm32-unknown-unknown --features wasm-target";
+
+
         src = self;
 
         cargoArtifacts = wasmArtifacts;
         doCheck = false;
 
         buildPhaseCargoCommand = ''
-            mkdir -p $out/pkg
+          echo build hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+          mkdir -p $out/pkg
 
-            HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --out-dir $out/pkg --scope=c2vi -- --features wasm-target
+          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --out-dir $out/pkg --scope=c2vi -- --no-default-features --features wasm-target
         '';
 
         buildInputs = with pkgs; [ wasm-bindgen-cli binaryen wasm-pack wasmToolchain ];
