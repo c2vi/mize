@@ -17,7 +17,7 @@ then
 	#scp -r acern:$path/* ocih:host/webserver/webfiles
 	tmp=$(mktemp -d)
   	[[ "$path" != "" ]] && rsync -rv -p --chmod=u+w acern:$path/* $tmp
-  	[[ "$path" != "" ]] && rsync -rv $tmp/* ocih:host/webserver/webfiles/ --rsync-path="sudo rsync"
+  	[[ "$path" != "" ]] && rsync -rv $tmp/* ocih:host/data/my-website --rsync-path="sudo rsync"
 
 
 
@@ -37,7 +37,7 @@ else
 	echo path: $path
 
 	#scp -r $path/* ocih:host/webserver/webfiles
-   [[ "$path" != "" ]] && rsync -rv $path/* ocih:host/webserver/webfiles --rsync-path="sudo rsync"
+   [[ "$path" != "" ]] && rsync -rv $path/* ocih:host/data/my-website --rsync-path="sudo rsync"
 fi
 
 
