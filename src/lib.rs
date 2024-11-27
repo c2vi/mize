@@ -98,6 +98,6 @@ pub fn instance_init(instance: &mut core::instance::Instance) {}
 
 pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> { Ok(()) }
 
-pub fn fetch_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<String> { Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned()) }
+pub fn fetch_module(instance: &mut core::instance::Instance, name: &str) -> MizeResult<String> { Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned()) }
 
 

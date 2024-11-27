@@ -129,19 +129,20 @@ rec {
 
     toolchain_version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile "${toolchain_version_drv}/rustc-version");
 
-    mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation ({
+    mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation ( rec {
       name = attrs.modName;
       inherit (attrs) modName;
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;
       });
+      hash = builtins.substring 0 32 (builtins.hashString "sha256" selector_string);
     } // attrs);
 
 
 
     ########## build Rust Module
     mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
-      MIZE_BUILD_CONFIG = mizeBildConfig;
+      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;
       });
@@ -202,6 +203,7 @@ rec {
 
 
     buildModule = path: extraArgs: pkgs.callPackage ((import path).module or (attrs: null)) ({
+        inherit buildMizeForSystem mizeBuildConfig mizeBuildConfigStr;
         inherit mkSelString craneLib toolchain_version;
         inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
         mize_version = main-default.version;
@@ -214,14 +216,16 @@ rec {
     };
 
 
-    mizeBildConfig = let
-      settingsFormat = pkgs.formats.toml { };
-    in settingsFormat.generate "mize-build-config.toml" {
-      config = {
+    mizeBuildConfig = {
         namespace = "mize.buildtime.ns";
         module_url = "c2vi.dev";
         selector = builtins.fromJSON (mkSelString {});
-      };
+    };
+
+    mizeBuildConfigStr = let
+      settingsFormat = pkgs.formats.toml { };
+    in settingsFormat.generate "mize-build-config.toml" {
+      config = mizeBuildConfig;
     };
 
     ####### build mize
@@ -240,7 +244,7 @@ rec {
           (if crossSystem.nameFull == "x86_64-unknown-linux-gnu" then pkgs.openssl else pkgsCross.openssl)
       ];
 
-      MIZE_BUILD_CONFIG = mizeBildConfig;
+      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
 
       # patch the interpreter to run on most linux-gnu distros
       postBuild = 
@@ -272,7 +276,7 @@ rec {
 
       CARGO_BUILD_TARGET = "${crossSystem.cpu.name}-pc-windows-gnu";
 
-      MIZE_BUILD_CONFIG = mizeBildConfig;
+      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
 
       # fixes issues related to libring
       TARGET_CC = "${pkgs.pkgsCross.mingwW64.stdenv.cc}/bin/${pkgs.pkgsCross.mingwW64.stdenv.cc.targetPrefix}cc";
@@ -295,6 +299,8 @@ rec {
       doCheck = false; # tests does not work in wasm
       CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
       cargoExtraArgs = "--features wasm-target --no-default-features";
+      RUSTFLAGS="-C linker=wasm-ld";
+      buildInputs = with pkgs; [ cargo-binutils lld ];
     });
     main-wasm = craneLib.mkCargoDerivation {
       name = "mize-npm-package";
@@ -302,8 +308,9 @@ rec {
       # i can't use CARGO_BUILD_TARGET to set the target
       # because then the cargo install run by wasm-pack tries to build the wasm-bindgen-cli for a wasm target...
 
-
       src = self;
+
+      doInstallCargoArtifacts = false;
 
       cargoArtifacts = wasmArtifacts;
       doCheck = false;
@@ -311,12 +318,16 @@ rec {
       buildPhaseCargoCommand = ''
           mkdir -p $out/pkg
 
-          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --out-dir $out/pkg --scope=c2vi -- --features wasm-target --no-default-features
+          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --target no-modules --out-dir $out/pkg --scope=c2vi -- --features wasm-target --no-default-features
+      '';
+
+      postInstall = ''
+      rm -rf $out/target.tar.zst
       '';
 
       buildInputs = with pkgsNative; [ wasm-bindgen-cli binaryen wasm-pack ];
 
-      MIZE_BUILD_CONFIG = mizeBildConfig;
+      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
     };
 
 
@@ -351,7 +362,7 @@ rec {
     });
 
     mkMizeModuleShell = attrs: pkgs.mkShell (attrs // {
-      MIZE_BUILD_CONFIG = mizeBildConfig;
+      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
     });
 
 
@@ -372,7 +383,7 @@ rec {
          pkg-config
         ];
 
-        MIZE_BUILD_CONFIG = mizeBildConfig;
+        MIZE_BUILD_CONFIG = mizeBuildConfigStr;
 
         shellHook = ''
           export MIZE_CONFIG_FILE=${self}/test-config.toml
@@ -412,13 +423,7 @@ rec {
     # install mize
     mkdir -p $out/mize/${mize.system.name}
 
-    ${ 
-    if mize.system.kernel.name == "windows"
-      then "cp ${mize.main}/bin/mize.exe $out/mize/${mize.system.name}/"
-    else if mize.system.cpu.name == "wasm32"
-      then "cp ${mize.main}/lib/mize.wasm $out/mize/${mize.system.name}/"
-      else "cp ${mize.main}/bin/mize $out/mize/${mize.system.name}/"
-    }
+    cp -r ${mize.main}/* $out/mize/${mize.system.name}/
 
     # intall the modules
     ${mkModulesInstallPhase mize.modulesList}
@@ -427,7 +432,7 @@ rec {
   mkModulesInstallPhase = modules: pkgs.lib.concatStringsSep "\n" (map mkModuleInstallPhase modules);
 
   mkModuleInstallPhase = module: let
-   hash = builtins.substring 0 32 (builtins.hashString "sha256" module.selector_string);
+   hash = module.hach; 
   in ''
     echo got module: ${module.name}
     echo out: $out

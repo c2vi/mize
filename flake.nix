@@ -55,6 +55,9 @@ let
     src = self;
     doCheck = false; # tests does not work in wasm
     CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+    cargoExtraArgs = "--features wasm-target --no-default-features";
+    RUSTFLAGS="-C linker=wasm-ld";
+    buildInputs = with pkgs; [ cargo-binutils lld ];
   });
 
   defaultMizeConfig = {
@@ -124,6 +127,7 @@ in {
         cargoExtraArgs = "--bin mize --features wasm-target";
         doCheck = false;
       };
+      inherit wasmArtifacts;
 
       # Thanks to:
       # - https://github.com/dl-solarity/hardhat-diamond-tools/blob/e5b8bc9624fbf89eda83a8ce4f6b6672ea83f550/flake.nix#L103
@@ -144,7 +148,8 @@ in {
           echo build hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
           mkdir -p $out/pkg
 
-          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --out-dir $out/pkg --scope=c2vi -- --no-default-features --features wasm-target
+          export HOME=$(mktemp -d fake-homeXXXX)
+          wasm-pack build --out-dir $out/pkg --scope=c2vi -- --no-default-features --features wasm-target
         '';
 
         buildInputs = with pkgs; [ wasm-bindgen-cli binaryen wasm-pack wasmToolchain ];
