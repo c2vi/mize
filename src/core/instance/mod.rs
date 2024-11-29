@@ -433,8 +433,9 @@ impl Instance {
         #[cfg(feature = "os-target")]
         thread::spawn(move || to_spawn());
 
-        #[cfg(feature = "wasm-target")]
-        crate::platform::wasm::wasm_spawn(to_spawn)?;
+        //#[cfg(feature = "wasm-target")]
+        //NOT WELL SUPPORTED
+        //crate::platform::wasm::wasm_spawn(to_spawn)?;
 
         Ok(())
     }
