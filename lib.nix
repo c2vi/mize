@@ -53,15 +53,17 @@ rec {
       '';
     };
 
+
+
+    mize_module_path = builtins.getEnv "MIZE_MODULE_PATH";
+    dirs_from_path = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString ":" mize_module_path);
+    dirs_in_nix_store = map (path: builtins.fetchGit {
+        url = path;
+      }) dirs_from_path;
+    from_env_var = map findModules dirs_in_nix_store;
     mizeMdules = let
       from_mize_modules_repo = findModules mize_modules;
-      mize_module_path = builtins.getEnv "MIZE_MODULE_PATH";
       mize_module_no_repo = builtins.getEnv "MIZE_MODULE_NO_REPO";
-      dirs_from_path = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString ":" mize_module_path);
-      dirs_in_nix_store = map (path: builtins.fetchGit {
-          url = path;
-        }) dirs_from_path;
-      from_env_var = map findModules dirs_in_nix_store;
       in pkgs.lib.lists.flatten (from_env_var ++ (if mize_module_no_repo != "" then [] else from_mize_modules_repo));
 
 
@@ -232,6 +234,7 @@ rec {
     main-default = craneLib.buildPackage ({
       src = "${self}";
       cargoExtraArgs = "--bin mize --features os-target";
+      # CARGO_PROFILE = "dev"; does not work...
       strictDeps = true;
 
       nativeBuildInputs = [ 
@@ -396,6 +399,8 @@ rec {
 
     in rec {
       inherit toolchain_version_drv pkgsCross craneLib;
+
+      inherit mize_module_path dirs_from_path dirs_in_nix_store from_env_var;
 
       devShell = mainDevShell;
 
