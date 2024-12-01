@@ -73,7 +73,7 @@ pub mod platform {
         pub use super::os::load_module;
 
         #[cfg(feature = "wasm-target")]
-        pub use super::super::load_module;
+        pub use super::wasm::load_module;
 
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::load_module;
@@ -96,7 +96,7 @@ pub mod platform {
 pub fn instance_init(instance: &mut core::instance::Instance) {}
 
 
-pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<PathBuf>) -> MizeResult<()> { Ok(()) }
+pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<String>) -> MizeResult<()> { Ok(()) }
 
 pub fn fetch_module(instance: &mut core::instance::Instance, name: &str) -> MizeResult<String> { Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned()) }
 

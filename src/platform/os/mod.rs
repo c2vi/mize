@@ -235,9 +235,19 @@ pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<St
     }
 }
 
-pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<PathBuf>) -> MizeResult<()> {
+pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<String>) -> MizeResult<()> {
     
-    let module_path = format!("{}/lib/libmmize_module_{}.so", fetch_module(instance, module_name)?, module_name);
+    let module_dir_from_config = instance.get(format!("0/config/module_dir/{}", module_name));
+
+    let module_path = if path.is_some() { 
+        format!("{}/lib/libmize_module_{}.so", path.unwrap(), module_name)
+
+    } else if module_dir_from_config.is_ok() {
+        format!("{}/lib/libmize_module_{}.so", module_dir_from_config.unwrap().value_string()?, module_name)
+
+    } else { 
+        format!("{}/lib/libmmize_module_{}.so", fetch_module(instance, module_name)?, module_name) 
+    };
 
     let lib = unsafe { libloading::Library::new(module_path)? };
 

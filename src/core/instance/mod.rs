@@ -41,6 +41,9 @@ pub mod updater;
 pub mod msg_thread;
 pub mod module;
 
+
+
+
 #[cfg(test)]
 mod tests;
 
@@ -87,6 +90,8 @@ pub struct InstanceAsync {
 
 impl Instance {
     pub fn empty() -> MizeResult<Instance> {
+
+
         let id_pool = Arc::new(Mutex::new(VecStringPool::default()));
         let namespace_pool_raw = StringPool::default();
         let connections = Arc::new(Mutex::new(Vec::new()));
@@ -96,6 +101,7 @@ impl Instance {
         let create_msg_wait = Arc::new(Mutex::new(None));
         let namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
         let self_namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
+
 
         let mut instance = Instance { 
             store: Arc::new(Mutex::new(Box::new(MemStore::new()))),
@@ -112,6 +118,8 @@ impl Instance {
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
         };
+
+
 
         let instance_clone = instance.clone();
         let op_rx_clone = op_rx.clone();
@@ -140,11 +148,15 @@ impl Instance {
     pub fn new() -> MizeResult<Instance> {
         trace!("[ {} ] Instance::new()", "CALL".yellow());
 
+
         let mut instance = Instance::empty()?;
+
 
         instance.init();
 
+
         debug!("instance inited with config: {}", instance.get("0/config")?.as_data_full()?);
+
 
         return Ok(instance);
     }
@@ -306,7 +318,7 @@ impl Instance {
         crate::platform::any::fetch_module(self, name)
     }
 
-    pub fn load_module_at(&mut self, name: &str, path: PathBuf) -> MizeResult<()> {
+    pub fn load_module_at(&mut self, name: &str, path: String) -> MizeResult<()> {
         // platform specific init code
         crate::platform::any::load_module(self, name, Some(path))
     }
@@ -405,6 +417,9 @@ impl Instance {
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
+
+        console_log!("in instance::spawn with wasm target");
+
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 
@@ -433,7 +448,10 @@ impl Instance {
         #[cfg(feature = "os-target")]
         thread::spawn(move || to_spawn());
 
-        //#[cfg(feature = "wasm-target")]
+        #[cfg(feature = "wasm-target")]
+        {
+            console_log!("in instance::spawn with wasm target")
+        }
         //NOT WELL SUPPORTED
         //crate::platform::wasm::wasm_spawn(to_spawn)?;
 
@@ -521,6 +539,10 @@ impl Instance {
         self.update_thread_busy.lock()?;
         trace!("wait_for_updaater_thread Thread Idle");
         Ok(())
+    }
+
+    pub fn report_error(err: MizeError) {
+        err.log()
     }
 }
 

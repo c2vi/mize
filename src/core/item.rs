@@ -428,8 +428,7 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
                     return Ok(string.as_bytes());
                 },
                 other => {
-                    return Err(MizeError::new()
-                        .msg("path is empty and the value is neither Bytes nor Text"));
+                    return Err(mize_err!("path is empty and the value: '{:?}' is neither Bytes nor Text", other));
                 },
             };
         }, 

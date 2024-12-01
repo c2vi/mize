@@ -52,10 +52,14 @@ macro_rules! console_log {
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 
-
 pub fn wasm_instance_init(instance: &mut Instance) -> MizeResult<()> {
     console_log!("Hello world from wasm_instance_init!!!!!!!!!!");
 
+    Ok(())
+}
+
+pub fn load_module(instance: &mut Instance, name: &str, path: Option<String>) -> MizeResult<()> {
+    console_log!("loading module: {}", name);
     Ok(())
 }
 
@@ -76,6 +80,8 @@ pub struct JsItemHandle {
 impl JsInstance {
     #[wasm_bindgen(constructor)]
     pub fn new() -> JsInstance {
+
+
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
         let instance = match Instance::new() {
@@ -85,6 +91,8 @@ impl JsInstance {
                 panic!()
             },
         };
+
+
         let mut js_instance = JsInstance { inner: NonNull::from(Box::leak(Box::new(instance))) };
         return js_instance;
     }
