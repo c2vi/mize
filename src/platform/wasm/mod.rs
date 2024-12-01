@@ -14,19 +14,35 @@ use crate::MizeError;
 use crate::core::item::IntoItemData;
 
 
+
+
 // console_log macro
+// that can be copied into other files for debugging purposes
+#[cfg(feature = "wasm-target")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "wasm-target")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
 }
+
+#[cfg(feature = "wasm-target")]
 macro_rules! console_log {
     // Note that this is using the `log` function imported above during
     // `bare_bones`
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+    ($($t:tt)*) => (unsafe { log(&format_args!($($t)*).to_string())})
+}
+
+#[cfg(not(feature = "wasm-target"))]
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => ()
 }
 //end of console_log macro
+
 
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
