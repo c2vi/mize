@@ -1,6 +1,6 @@
 use std::ptr::NonNull;
 use std::panic;
-use web_sys::js_sys;
+use web_sys::js_sys::{self, eval};
 use crate::id::MizeId;
 use crate::item::Item;
 use crate::platform::wasm::js_sys::Function;
@@ -54,6 +54,8 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 pub fn wasm_instance_init(instance: &mut Instance) -> MizeResult<()> {
     console_log!("Hello world from wasm_instance_init!!!!!!!!!!");
+
+    eval("window.mize.mod = {}")?;
 
     Ok(())
 }
