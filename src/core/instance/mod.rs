@@ -367,6 +367,16 @@ impl Instance {
         Ok(old_next_con_id)
     }
 
+    pub fn new_connection_join_namespace(&self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
+        let conn_id = self.new_connection(&self, tx)?;
+
+        let ns_of_peer_str = self.get(format!("inst/con_by_id/{}/peer/0/config/namespace", conn_id))?.value_string()?;
+        let ns_of_peer = self.namespace_from_string(ns_of_peer_str)?;
+
+        self.connection_set_namespace(conn_id, ns_of_peer.clone());
+        self.set_namespace(ns_of_peer);
+    }
+
     pub fn connection_set_namespace(&self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
         let mut connection = self.get_connection(conn_id)?;
         connection.ns = Some(namespace);
