@@ -36,10 +36,10 @@ serde = "1.0.203"
 interner = { git = "https://github.com/c2vi/interner" }
 tracing = "0.1.40"
 serde_json = { version = "1.0.117", optional = false }
-crossbeam = "0.8.4"
 toml = { version = "0.8.13", features = ["parse"], optional = false }
 dyn-clone = "1.0.17"
 sha2 = "0.10.8"
+flume = "0.11.1"
 
 # buildin modules
 #mize_module_blob = { path = "./modules/modules/Blob" }

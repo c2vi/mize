@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use clap::ArgMatches;
 use home::home_dir;
-use crossbeam::channel::bounded;
+use flume::bounded;
 use std::io::Read;
 
 use mize::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};

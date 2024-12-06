@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tokio::net::{UnixListener as TokioUnixListener, UnixStream};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::io::{Interest, AsyncReadExt, AsyncWriteExt};
-use crossbeam::channel::{Receiver, Sender, unbounded};
+use flume::{Receiver, Sender, unbounded};
 use ciborium::Value as CborValue;
 use tracing::{info, warn, debug};
 

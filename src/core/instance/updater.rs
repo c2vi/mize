@@ -1,4 +1,4 @@
-use crossbeam::channel::Receiver;
+use flume::Receiver;
 use tracing::{error, trace, warn};
 use std::borrow::BorrowMut;
 use std::sync::Arc;

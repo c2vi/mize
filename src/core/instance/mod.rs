@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashMap;
 use std::fs::create_dir;
 use std::{thread, vec};
-use crossbeam::channel::{self, bounded, Receiver, Sender};
+use flume::{bounded, Receiver, Sender, unbounded};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, trace, warn, Instrument};
 use uuid::Uuid;
@@ -69,7 +69,7 @@ pub struct Instance {
     // the namespace of the instance itself
     // TODO: set to a random uuid
     pub self_namespace: Arc<Mutex<Namespace>>,
-    pub op_tx: channel::Sender<Operation>,
+    pub op_tx: Sender<Operation>,
     threads: Arc<Mutex<Vec<(u32, String)>>>,
     next_thread_id: Arc<Mutex<u32>>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
@@ -96,7 +96,7 @@ impl Instance {
         let namespace_pool_raw = StringPool::default();
         let connections = Arc::new(Mutex::new(Vec::new()));
         let subs = Arc::new(Mutex::new(HashMap::new()));
-        let (op_tx, op_rx) = channel::unbounded();
+        let (op_tx, op_rx) = unbounded();
         let give_msg_wait = Arc::new(Mutex::new(HashMap::new()));
         let create_msg_wait = Arc::new(Mutex::new(None));
         let namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
@@ -368,13 +368,15 @@ impl Instance {
     }
 
     pub fn new_connection_join_namespace(&self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
-        let conn_id = self.new_connection(&self, tx)?;
+        let conn_id = self.new_connection(tx)?;
 
         let ns_of_peer_str = self.get(format!("inst/con_by_id/{}/peer/0/config/namespace", conn_id))?.value_string()?;
         let ns_of_peer = self.namespace_from_string(ns_of_peer_str)?;
 
         self.connection_set_namespace(conn_id, ns_of_peer.clone());
         self.set_namespace(ns_of_peer);
+
+        Ok(conn_id)
     }
 
     pub fn connection_set_namespace(&self, conn_id: u64, namespace: Namespace) -> MizeResult<()> {
@@ -427,8 +429,6 @@ impl Instance {
     }
 
     pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
-
-        console_log!("in instance::spawn with wasm target");
 
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
@@ -552,7 +552,7 @@ impl Instance {
     }
 
     pub fn report_error(err: MizeError) {
-        err.log()
+        err.log();
     }
 }
 

@@ -1,4 +1,4 @@
-use crossbeam::channel::{Sender, Receiver};
+use flume::{Sender, Receiver};
 use tracing::{trace, debug, info, warn, error};
 
 use crate::id::Namespace;

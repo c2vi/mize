@@ -1,6 +1,6 @@
 use core::fmt;
 use std::rc::Rc;
-use crossbeam::channel::Sender;
+use flume::Sender;
 use std::sync::Arc;
 use tracing::trace;
 
