@@ -460,7 +460,7 @@ impl Instance {
 
         #[cfg(feature = "wasm-target")]
         {
-            console_log!("in instance::spawn with wasm target")
+            //console_log!("in instance::spawn with wasm target")
         }
         //NOT WELL SUPPORTED
         //crate::platform::wasm::wasm_spawn(to_spawn)?;

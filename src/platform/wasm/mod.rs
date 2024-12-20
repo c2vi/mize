@@ -55,7 +55,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 pub fn wasm_instance_init(instance: &mut Instance) -> MizeResult<()> {
     console_log!("Hello world from wasm_instance_init!!!!!!!!!!");
 
-    eval("window.mize.mod = {}")?;
+    eval("window.mize.mod = {}").map_err(|_| mize_err!("failed to set window.mize.mod to an empty object"))?;
 
     Ok(())
 }
