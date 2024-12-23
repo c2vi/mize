@@ -171,11 +171,6 @@ impl Instance {
 
         self.load_module("String")?;
 
-        //let mut modules_inner = self.modules.lock()?;
-        //let module = modules_inner.get_mut("String").unwrap();
-        //println!("right before segfault");
-        //module.init(&self);
-
 
         debug!("INSTANCE INIT DONE");
         Ok(())
