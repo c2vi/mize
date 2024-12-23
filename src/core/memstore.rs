@@ -91,29 +91,6 @@ impl Store for MemStore {
         let new_path = id.after_store_part();
         let ret_data = data.get_path(new_path)?;
 
-
-
-    #[cfg(feature = "wasm-target")]
-    unsafe {
-// console_log macro
-use wasm_bindgen::prelude::*;
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! console_log {
-    // Note that this is using the `log` function imported above during
-    // `bare_bones`
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-//end of console_log macro
-        console_log!("ret_data in data full in memstore: {:?}", ret_data);
-    }
-
-
-
-
         return Ok(ret_data);
     }
     fn id_iter(&self) -> MizeResult<IdIter> {
