@@ -385,6 +385,10 @@ impl Instance {
         Ok(self.op_tx.send(Operation::Msg(msg))?)
     }
 
+    pub fn report_err(&self, err: MizeError) {
+        err.log();
+    }
+
     fn set_connection(&self, conn_id: u64, new_connection: Connection) -> MizeResult<()> {
         let mut conn_inner = self.connections.lock()?;
 
