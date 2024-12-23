@@ -381,7 +381,7 @@ impl Instance {
         Ok(())
     }
 
-    pub(crate) fn got_msg(&self, msg: MizeMessage) -> MizeResult<()> {
+    pub fn got_msg(&self, msg: MizeMessage) -> MizeResult<()> {
         Ok(self.op_tx.send(Operation::Msg(msg))?)
     }
 
