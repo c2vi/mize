@@ -16,7 +16,7 @@ use crate::id::MizeId;
 use crate::instance::store::Store;
 use crate::instance::Instance;
 use crate::error::{IntoMizeResult, MizeError, MizeResult};
-use crate::item::{ItemData, IntoItemData};
+use crate::item::{data_from_string, IntoItemData, ItemData};
 use crate::memstore::MemStore;
 use crate::{mize_err, Module};
 use crate::instance::module::EmptyModule;
@@ -57,7 +57,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
     ////// load config from MIZE_CONFIG env var
     match std::env::var("MIZE_CONFIG") {
         Ok(config_string) => {
-            let config = config_from_string(config_string)?;
+            let config = data_from_string(config_string)?;
             debug!("env var MIZE_CONFIG present");
             instance.set_blocking("0", config)?;
             trace!("config after MIZE_CONFIG env var: {}", instance.get("0/config")?);
@@ -282,7 +282,7 @@ pub fn config_from_cli_args(matches: &ArgMatches) -> MizeResult<ItemData> {
     }
 
     if let Some(config_string) = matches.get_one::<String>("config") {
-        config.merge(config_from_string(config_string.to_string())?);
+        config.merge(data_from_string(config_string.to_string())?);
         trace!("config after --config arg: {}", config);
     }
 
@@ -300,27 +300,6 @@ pub fn config_from_file(file_path: String) -> MizeResult<ItemData> {
     return Ok(item_data);
 }
 
-fn config_from_string(config_string: String) -> MizeResult<ItemData> {
-
-    let mut config = ItemData::new();
-
-    for option in config_string.split(":") {
-        if option == "".to_owned() {
-            continue;
-        }
-
-        let path = option.split("=").nth(0)
-            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing beforee =)", option)))?;
-        let value = option.split("=").nth(1)
-            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
-        let mut path_vec = vec!["config"];
-        path_vec.extend(path.split("."));
-
-        config.set_path(path_vec, ItemData::parse(value))?;
-    }
-
-    return Ok(config);
-}
 
 
 

@@ -1,8 +1,12 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
+use std::str::FromStr;
 use clap::ArgMatches;
 use home::home_dir;
 use flume::bounded;
+use mize::mize_err;
 use std::io::Read;
+use tracing::debug;
 
 use mize::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};
 use mize::instance::Instance;
@@ -158,4 +162,19 @@ pub fn format_cbor(sub_matches: &ArgMatches) -> MizeResult<()> {
 }
 
 
+pub fn run_from_module(cmd: &str, sub_matches: &ArgMatches) -> MizeResult<()> {
+    let default = OsString::default();
+    let mut sub_cmd_line: Vec<OsString> = sub_matches.get_many::<OsString>("").unwrap().map(|e| e.to_owned()).collect();
+    sub_cmd_line.insert(0, OsString::from_str(cmd)?);
+
+    let mut instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+
+    debug!("loading module '{}'", cmd);
+    instance.load_module(cmd)?;
+
+    instance.get_module(cmd)?.run_cli(&instance, sub_cmd_line)
+        .ok_or(mize_err!("The Module '{cmd}' does not implement the run_cli() functionality"))??;
+
+    Ok(())
+}
 

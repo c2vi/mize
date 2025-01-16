@@ -68,7 +68,7 @@ rec {
 
 
     findModules = path: let
-      mize_module_no_externals = builtins.getEnv "MIZE_MODULE_NO_Externals";
+      mize_module_no_externals = builtins.getEnv "MIZE_MODULE_NO_EXTERNALS";
       module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
       module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
       getExternals = path: map findModules ((pkgs.callPackage ((import path).externals or (args: [])) {}));
@@ -145,6 +145,12 @@ rec {
     ########## build Rust Module
     mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
       MIZE_BUILD_CONFIG = mizeBuildConfigStr;
+      mizeInstallPhase = ''
+        mkdir -p $out/lib/
+        cp ./target/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
+      '';
+      mizeBuildPhase = ''
+      '';
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;
       });
@@ -326,6 +332,8 @@ rec {
 
       postInstall = ''
       rm -rf $out/target.tar.zst
+
+      cat $src/src/platform/wasm/init.js >> $out/pkg/mize.js
       '';
 
       buildInputs = with pkgsNative; [ wasm-bindgen-cli binaryen wasm-pack ];

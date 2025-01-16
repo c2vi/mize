@@ -30,7 +30,7 @@ pub struct Item<'a> {
 
 // without an Instance it is not an item, but only the "data of an item"
 // and this type for now is just an alias to CborValue
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemData ( pub CborValue );
 
 impl Item<'_> {
@@ -162,6 +162,13 @@ impl ItemData {
         return Ok(value.into_item_data());
     }
 
+    pub fn value_string(self) -> MizeResult<String> {
+        match self.cbor() {
+            CborValue::Text(string) => Ok(string.to_owned()),
+            _ => Err(mize_err!("this ItemData has no string value")),
+        }
+    }
+
     pub fn from_string<S: Into<String>>(into_string: S) -> ItemData {
         let string = into_string.into();
         let data = CborValue::Text(string);
@@ -175,6 +182,15 @@ impl ItemData {
         self.0.serialize(&mut serde_json::Serializer::new(&mut result))?;
 
         Ok(String::from_utf8(result)?)
+    }
+
+    pub fn from_json(json_str: String) -> MizeResult<ItemData> {
+        let mut json_deserializer = serde_json::Deserializer::from_str(json_str.as_str());
+
+        let value = CborValue::deserialize(&mut json_deserializer)
+            .mize_result_msg(format!("could not deserialize the json string: {}", json_str))?;
+
+        return Ok(value.into_item_data());
     }
 
     pub fn merge(&mut self, other: ItemData) {
@@ -224,6 +240,41 @@ impl ItemData {
         Ok(item_data_get_path(&self.0, path)?.to_owned().into_item_data())
     }
 
+}
+
+
+impl Default for ItemData {
+    fn default() -> Self {
+        ItemData::new()
+    }
+}
+
+pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
+
+    let mut config = ItemData::new();
+
+    // in case it's just a string
+    if !data_string.contains("=") {
+        let cbor = CborValue::Text(data_string);
+        return Ok(ItemData::from_cbor(cbor));
+    }
+
+    for option in data_string.split(":") {
+        if option == "".to_owned() {
+            continue;
+        }
+
+        let path = option.split("=").nth(0)
+            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing beforee =)", option)))?;
+        let value = option.split("=").nth(1)
+            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
+        let mut path_vec = vec!["config"];
+        path_vec.extend(path.split("."));
+
+        config.set_path(path_vec, ItemData::parse(value))?;
+    }
+
+    return Ok(config);
 }
 
 pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {

@@ -1,6 +1,7 @@
 # MiZe
-- An implementation of how I think data should be handled. 
-- Slogan: _Elevate the Unix file philosophy into the age of connectivity._
+With Mize I am building the software platform, that I would want to use.
+
+_Elevate the Unix file philosophy into the age of connectivity._
 
 ## Why am I doing this?
 - What annoys me about software these days is, that things are done in so many different ways.
@@ -22,16 +23,3 @@
 
 - That's why the slogan is going to be: _Elevate the unix file philosophy into the age of connectivity._
 
-## How am I going to do this?
-Is not yet completely clear, but here's what I know so far:
-- Using what I call "Items" instead of files
-	- With "Items" being a key-value store of strings/bytestreams
-	- Those "Items" have types, that give meaning to the key-value pairs.
-- A server written in Rust that stores those "Items".
-- A way to mount "Items" (or parts of them) into a regular filesystem.
-- Web Components to show/render the contents of items in a browser (or Electron-style apps).
-- Server middleware to connect external APIs (e.g. emails, YouTube, Google accounts) to this ecosystem.
-- The server is one binary without any external requirements (that should run on any POSIX system)
-	- This makes it very simple to deploy
-	- I've previously experimented with using MongoDB to store items, but that requires a MongoDB instance to always be running that the server can connect to. And the connection can fail ... and lots of other things can go wrong.
-	- I want a binary that you can simply start, which then provides a working server.

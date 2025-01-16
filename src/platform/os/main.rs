@@ -1,11 +1,14 @@
 
 #![ allow( warnings ) ]
 
+use std::ffi::OsString;
 use std::path::PathBuf;
+use clap::builder::OsStr;
 use clap::{ArgAction, ArgMatches};
 use clap::{Arg, crate_version, Command};
 
 use mize::error::{MizeError, MizeResult};
+use mize::{instance, Instance};
 use mize::item::ItemData;
 use tokio::sync::{Mutex, mpsc};
 use std::sync::Arc;
@@ -70,7 +73,7 @@ fn main() {
         Some(("format-cbor", sub_matches)) => cli::format_cbor(sub_matches),
 
         // some unknown command passed
-        Some((cmd, sub_matches)) => Err(MizeError::new().msg(format!("The subcommand: {} is not known. use --help to list availavle commands", cmd))),
+        Some((cmd, sub_matches)) => cli::run_from_module(cmd, sub_matches),
 
         None => Err(MizeError::new().msg("No subcommand was passed. use --help to list availavle comamnds.")),
     };
@@ -81,6 +84,8 @@ fn main() {
 }
 
 
+
+
 fn cli_matches() -> clap::ArgMatches {
 
 
@@ -88,6 +93,7 @@ fn cli_matches() -> clap::ArgMatches {
         .version(crate_version!())
         .author("Sebastian Moser")
         .about("The MiZe Command line tool")
+        .allow_external_subcommands(true)
         .arg(Arg::new("verbose")
             .long("verbose")
             .short('v')

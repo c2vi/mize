@@ -14,7 +14,7 @@ use interner::shared::{VecStringPool, StringPool};
 
 use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
 use crate::instance::store::Store;
-use crate::instance::updater::updater_thread;
+use crate::instance::updater::{ updater_thread, updater_thread_async };
 use crate::id::{IntoMizeId, MizeId, Namespace};
 use crate::instance::subscription::Subscription;
 use crate::item::{Item, ItemData};
@@ -59,7 +59,7 @@ pub struct Instance {
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Vec<Subscription>>>>,
-    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send>>>>,
+    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send >>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
 
@@ -74,7 +74,7 @@ pub struct Instance {
     next_thread_id: Arc<Mutex<u32>>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
-    update_thread_busy: Arc<Mutex<bool>>,
+
     #[cfg(feature = "async")]
     pub runtime: Arc<Mutex<Runtime>>,
 }
@@ -113,7 +113,6 @@ impl Instance {
             next_thread_id: Arc::new(Mutex::new(0)),
             next_con_id: Arc::new(Mutex::new(1)),
             give_msg_wait, create_msg_wait,
-            update_thread_busy: Arc::new(Mutex::new(false)),
 
             #[cfg(feature = "async")]
             runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
@@ -121,14 +120,29 @@ impl Instance {
 
 
 
-        let instance_clone = instance.clone();
-        let op_rx_clone = op_rx.clone();
-        let closure = move || updater_thread(op_rx_clone, &instance_clone);
-        instance.spawn("updater_thread", closure)?;
+        #[cfg(feature = "os-target")]
+        {
+            let instance_clone = instance.clone();
+            let op_rx_clone = op_rx.clone();
+            let closure = move || updater_thread(op_rx_clone, &instance_clone);
+            instance.spawn("updater_thread", closure)?;
 
-        let instance_clone_two = instance.clone();
-        let closure_two = move || updater_thread(op_rx, &instance_clone_two);
-        instance.spawn("updater_thread", closure_two)?;
+            let instance_clone_two = instance.clone();
+            let closure_two = move || updater_thread(op_rx, &instance_clone_two);
+            instance.spawn("updater_thread", closure_two)?;
+        }
+
+
+        // set up async update "threads" when using wasm
+        #[cfg(feature = "wasm-target")]
+        {
+            let instance_clone = instance.clone();
+            let op_rx_clone = op_rx.clone();
+            wasm_bindgen_futures::spawn_local(updater_thread_async(op_rx_clone, instance_clone));
+
+            let instance_clone_two = instance.clone();
+            wasm_bindgen_futures::spawn_local(updater_thread_async(op_rx, instance_clone_two));
+        }
 
         // will move the msg stuff into it's own thread
         // like this it can deadlock.... if a msg waits on an operation to complete
@@ -161,7 +175,7 @@ impl Instance {
         return Ok(instance);
     }
 
-    fn init(&mut self) -> MizeResult<()> {
+    pub fn init(&mut self) -> MizeResult<()> {
 
         // platform specific init code
         crate::platform::any::instance_init(self)?;
@@ -169,7 +183,18 @@ impl Instance {
         // end of platform specific init code
 
 
-        self.load_module("String")?;
+        // load the modules, ad specified in the load_modules config
+        match self.get("0/config/load_modules")?.value_string() {
+            Ok(modules_to_load) => {
+                for module in modules_to_load.split(" ") {
+                    self.load_module(module)?;
+                }
+            },
+            Err(err) => {
+                // no load_modules option is set
+            }
+        }
+
 
 
         debug!("INSTANCE INIT DONE");
@@ -316,6 +341,14 @@ impl Instance {
     pub fn load_module_at(&mut self, name: &str, path: String) -> MizeResult<()> {
         // platform specific init code
         crate::platform::any::load_module(self, name, Some(path))
+    }
+
+    pub fn get_module(&mut self, name: &str) -> MizeResult<Box<dyn Module + Send + Sync>> {
+        let inner = self.modules.lock()?;
+
+        let module = inner.get(name).ok_or(mize_err!("Couldn't get_module('{name}')"))?.clone_module();
+
+        Ok(module)
     }
 
     pub fn namespace_from_string(&self, ns_str: String) -> MizeResult<Namespace> {
@@ -539,16 +572,6 @@ impl Instance {
         }
     }
 
-    pub fn wait_for_updaater_thread(&self) -> MizeResult<()> {
-        thread::sleep_ms(10000000);
-        return Ok(());
-        while !self.op_tx.is_empty() {
-            thread::sleep_ms(50);
-        }
-        self.update_thread_busy.lock()?;
-        trace!("wait_for_updaater_thread Thread Idle");
-        Ok(())
-    }
 
     pub fn report_error(err: MizeError) {
         err.log();

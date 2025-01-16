@@ -19,6 +19,75 @@ pub enum Operation {
     Msg(MizeMessage),
 }
 
+
+
+
+
+// console_log macro
+// that can be copied into other files for debugging purposes
+#[cfg(feature = "wasm-target")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "wasm-target")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+#[cfg(feature = "wasm-target")]
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (unsafe { log(&format_args!($($t)*).to_string())})
+}
+
+#[cfg(not(feature = "wasm-target"))]
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => ()
+}
+//end of console_log macro
+
+
+
+
+
+pub async fn updater_thread_async(operation_rx : Receiver<Operation>, instance: Instance) -> () {
+    let mut count = 0;
+    console_log!("inside an updater thread");
+
+    loop {
+        let mut operation = match operation_rx.recv_async().await {
+            Ok(val) => val,
+            Err(e) => {
+                instance.report_err(e.into());
+                continue;
+            }
+        };
+
+        let op_str = match operation {
+            Operation::Set(_, _, _) => "SET",
+            Operation::Msg(_) => "MSG",
+        };
+
+        trace!("OPERATION {} - {}", count, op_str);
+        console_log!("OPERATION {} - {}", count, op_str);
+
+        let result = handle_operation(&mut operation, &instance);
+
+        trace!("OPERATION {} DONE", count);
+        count += 1;
+
+        if let Err(err) = result {
+            error!("OPERATION {} FAILED: {:?}", count, operation);
+            err.log();
+        }
+
+    }
+}
+
 pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -> MizeResult<()> {
     let mut count = 0;
 
@@ -31,8 +100,6 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
 
         trace!("OPERATION {} - {}", count, op_str);
 
-        //let mut busy = instance.update_thread_busy.lock()?;
-
         let result = handle_operation(&mut operation, instance);
 
         trace!("OPERATION {} DONE", count);
@@ -43,7 +110,6 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
             err.log();
         }
 
-        //drop(busy);
     }
     Ok(())
 }

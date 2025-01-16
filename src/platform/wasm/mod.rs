@@ -2,7 +2,7 @@ use std::ptr::NonNull;
 use std::panic;
 use web_sys::js_sys::{self, eval};
 use crate::id::MizeId;
-use crate::item::Item;
+use crate::item::{Item, ItemData};
 use crate::platform::wasm::js_sys::Function;
 use web_sys::{WorkerOptions, WorkerType};
 use web_sys::Worker;
@@ -55,13 +55,16 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 pub fn wasm_instance_init(instance: &mut Instance) -> MizeResult<()> {
     console_log!("Hello world from wasm_instance_init!!!!!!!!!!");
 
-    eval("window.mize.mod = {}").map_err(|_| mize_err!("failed to set window.mize.mod to an empty object"))?;
-
     Ok(())
 }
 
 pub fn load_module(instance: &mut Instance, name: &str, path: Option<String>) -> MizeResult<()> {
     console_log!("loading module: {}", name);
+
+    let hi = 1;
+    let hi = 1;
+    let hi = 1;
+
     Ok(())
 }
 
@@ -77,33 +80,35 @@ pub struct JsItemHandle {
     id: MizeId,
 }
 
+#[wasm_bindgen]
+pub async fn new_js_instance(config_json_str: String) -> JsInstance {
+
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+    let config = ItemData::from_json(config_json_str).expect("parsing of json config failed");
+
+    let mut instance = Instance::empty().expect("Instance::empty() failed");
+
+    instance.set_blocking("0/config", config).expect("Failed to set the config at item 0");
+
+    let mut js_instance = JsInstance { inner: NonNull::from(Box::leak(Box::new(instance))) };
+
+    return js_instance;
+}
 
 #[wasm_bindgen]
 impl JsInstance {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> JsInstance {
 
-
-        panic::set_hook(Box::new(console_error_panic_hook::hook));
-
-        let instance = match Instance::new() {
-            Ok(val) => val,
-            Err(e) => {
-                console_log!("Instance::new() failed with: {:?}", e);
-                panic!()
-            },
-        };
-
-
-        let mut js_instance = JsInstance { inner: NonNull::from(Box::leak(Box::new(instance))) };
-        return js_instance;
+    #[wasm_bindgen]
+    pub unsafe fn init(&mut self) -> MizeResult<()> {
+        self.inner.as_mut().init()
     }
 
     #[wasm_bindgen]
     pub unsafe fn set(&mut self, id: String, value: String) -> () {
         let data = value.into_item_data();
         console_log!("data in set: {}", data);
-        self.inner.as_mut().set_blocking(id, data);
+        self.inner.as_mut().set(id, data);
     }
 
     #[wasm_bindgen]

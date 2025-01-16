@@ -7,12 +7,24 @@ async function init_mize(config) {
 		return window.mize
 	}
 
+  let config_str = "";
+  if typeof config == "string" {
+    config_str = config
 
-   const { JsInstance } = wasm_bindgen;
+  } else if typeof config == "object" {
+    config_str = JSON.stringify(config)
 
-   await wasm_bindgen()
+  } else {
+    throw "Error: config passed to init_mize() is not of type 'object' or 'string'"
+  }
 
-   window.mize = await new JsInstance(config)
+  const { new_js_instance } = wasm_bindgen;
 
-	return window.mize
+  await wasm_bindgen()
+
+  window.mize = await new_js_instance(config)
+  window.mize.mod = {}
+  window.mize.init()
+
+  return window.mize
 }
