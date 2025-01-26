@@ -251,7 +251,7 @@ impl Default for ItemData {
 
 pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
 
-    let mut config = ItemData::new();
+    let mut data = ItemData::new();
 
     // in case it's just a string
     if !data_string.contains("=") {
@@ -268,13 +268,13 @@ pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing beforee =)", option)))?;
         let value = option.split("=").nth(1)
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
-        let mut path_vec = vec!["config"];
+        let mut path_vec = Vec::new();
         path_vec.extend(path.split("."));
 
-        config.set_path(path_vec, ItemData::parse(value))?;
+        data.set_path(path_vec, ItemData::parse(value))?;
     }
 
-    return Ok(config);
+    return Ok(data);
 }
 
 pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&CborValue> {

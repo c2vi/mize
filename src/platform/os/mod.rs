@@ -59,7 +59,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         Ok(config_string) => {
             let config = data_from_string(config_string)?;
             debug!("env var MIZE_CONFIG present");
-            instance.set_blocking("0", config)?;
+            instance.set_blocking("0/config", config)?;
             trace!("config after MIZE_CONFIG env var: {}", instance.get("0/config")?);
         }
         Err(var_err) => match var_err {
