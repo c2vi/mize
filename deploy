@@ -9,7 +9,7 @@ then
 	ssh acern mkdir -p ~/work/modules
 	rsync -rv --exclude="target" --exclude="gitignore" ./* acern:/tmp/mize-src/
 	rsync -rv --exclude="target" --exclude="gitignore" --exclude="node_modules" ~/work/modules acern:work/
-	path=$(ssh acern /home/me/out/nix/bin/nix build /tmp/mize-src#webfiles -L --print-out-paths)
+	path=$(ssh acern /home/me/out/nix/bin/nix build /tmp/mize-src#dist -L --print-out-paths)
 
 	echo doneeeeeeeeeeeeeee building
 	echo path: $path
@@ -31,7 +31,7 @@ then
 
 
 else
-	path=$(nix build .#webfiles -L -v --print-out-paths $@)
+	path=$(nix build .#dist -L -v --print-out-paths $@)
 
 	echo doneeeeeeeeeeeeeee building
 	echo path: $path

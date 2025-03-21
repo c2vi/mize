@@ -455,8 +455,8 @@ rec {
     echo '${module.selector_string}' > $out/mize/dist/${hash}-${module.modName}/selector
   '';
 
-  webfiles = systems: stdenv.mkDerivation {
-    name = "mize-webfiles";
+  dist = systems: stdenv.mkDerivation {
+    name = "mize-dist";
     dontUnpack = true;
 
     # so that those binaries run on average linux-gnu systems
