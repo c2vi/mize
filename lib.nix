@@ -23,6 +23,7 @@ rec {
           then "${crossSystem.cpu.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}"
           else "${crossSystem.cpu.name}-${crossSystem.vendor.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}";
         nameFull = "${crossSystem.cpu.name}-${crossSystem.vendor.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}";
+        nameRust = nameFull;
         config = nameFull;
       };
   in crossSystem;
@@ -101,7 +102,7 @@ rec {
           ])
 
       else
-          (crane.mkLib pkgsCross).overrideToolchain (p: p.rust-bin.stable.latest.default)
+          (crane.mkLib pkgsCross).overrideToolchain (p: fenix.packages.${localSystem}.stable.toolchain)
       ;
 
   toolchain_version_drv = pkgs.stdenv.mkDerivation {
@@ -131,7 +132,7 @@ rec {
 
     toolchain_version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile "${toolchain_version_drv}/rustc-version");
 
-    mkMizeModule = attrs: pkgsCross.stdenv.mkDerivation ( rec {
+    mkMizeModule = attrs: (if builtins.hasAttr "drvFunc" attrs then attrs.drvFunc else pkgsCross.stdenv.mkDerivation) ( rec {
       name = attrs.modName;
       inherit (attrs) modName;
       selector_string = mkSelString (attrs.select or {} // {
@@ -145,11 +146,12 @@ rec {
     ########## build Rust Module
     mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
       MIZE_BUILD_CONFIG = mizeBuildConfigStr;
-      mizeInstallPhase = ''
+      mizeInstallPhase = attrs.mizeInstallPhase or ''
         mkdir -p $out/lib/
-        cp ./target/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
+        cp $build_dir/target/${crossSystem.nameRust}/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
       '';
-      mizeBuildPhase = ''
+      mizeBuildPhase = attrs.mizeBuildPhase or ''
+        cargo --color always build --target ${crossSystem.nameRust} --manifest-path $build_dir/Cargo.toml --lib
       '';
       selector_string = mkSelString (attrs.select or {} // {
         inherit (attrs) modName;

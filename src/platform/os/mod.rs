@@ -112,7 +112,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
         #[cfg(target_family = "windows")]
         {
-            warn!("CONNECTING... would connect, but that is not implemented on windows yet");
+            error!("CONNECTING... would connect, but that is not implemented on windows yet");
         }
 
     } else {
@@ -216,13 +216,13 @@ fn download_module(instance: &mut Instance, store_path: &str, module_url: &str, 
 
 pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<String> {
 
-    if let Ok(module_path) = instance.get(format!("0/config/module_dir/{}", module_name))?.value_string() {
+    if let Ok(module_path) = instance.get(format!("self/config/module_dir/{}", module_name))?.value_string() {
         return Ok(module_path);
     } else {
         // if null, load it from the url
-        let module_url = instance.get("0/config/module_url")?.value_string()?;
+        let module_url = instance.get("self/config/module_url")?.value_string()?;
 
-        let store_path = instance.get("0/config/store_path")?.value_string()?;
+        let store_path = instance.get("self/config/store_path")?.value_string()?;
 
         let (module_hash, module_selector) = get_module_hash(instance, module_name, ItemData::new())?;
 
@@ -237,7 +237,7 @@ pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<St
 
 pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<String>) -> MizeResult<()> {
     
-    let module_dir_from_config = instance.get(format!("0/config/module_dir/{}", module_name));
+    let module_dir_from_config = instance.get(format!("self/config/module_dir/{}", module_name));
 
     let module_path = if path.is_some() { 
         format!("{}/lib/libmize_module_{}.so", path.unwrap(), module_name)

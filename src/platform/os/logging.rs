@@ -89,8 +89,8 @@ pub fn init_logger(cli_matches: &ArgMatches) {
     log_messages.push((Level::TRACE, format!("set log level from the verbose flags to {}", log_level)));
  
     // check --log-level arg
-    if let Some(log_level_arg_string) = cli_matches.get_one::<&str>("log-level") {
-        let log_level_from_arg = match log_level_arg_string.to_lowercase().as_str() {
+    if let Some(log_level_arg_string) = cli_matches.get_one::<String>("log-level") {
+        let log_level_from_arg = match log_level_arg_string.to_owned().to_lowercase().as_str() {
             "none" => LevelFilter::OFF,
             "trace" => LevelFilter::TRACE,
             "debug" => LevelFilter::DEBUG,

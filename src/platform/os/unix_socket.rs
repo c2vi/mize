@@ -58,6 +58,7 @@ async fn connect_async(mut instance: Instance, store_path: PathBuf) -> MizeResul
         Ok(())
     });
 
+
     let outgoing_cloned_instance = instance.clone();
     instance.spawn("outgoing", move || {
         let result = unix_outgoing(unix_write, send_rx, outgoing_cloned_instance, conn_id);

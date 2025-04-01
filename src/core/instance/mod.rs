@@ -557,10 +557,14 @@ impl Instance {
         threads_inner.push((*next_thread_id, name.to_owned()));
         let runtime_inner = self.runtime.lock().unwrap();
         let handle = runtime_inner.handle().to_owned();
+        *next_thread_id += 1;
+
         drop(runtime_inner);
+        drop(threads_inner);
+        drop(next_thread_id);
+
         let result = handle.block_on(func);
 
-        *next_thread_id += 1;
 
         return result;
     }

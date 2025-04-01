@@ -60,6 +60,8 @@ impl Item<'_> {
 
         // the instance we are
         if id.store_part() == "self" {
+            debug!("getting item '{}' from self", self.id());
+
             match id.nth_part(1)? {
                 "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
                 "namespace" => { 
@@ -70,6 +72,13 @@ impl Item<'_> {
                     let namespace_inner = self.instance.self_namespace.lock()?;
                     return Ok(ItemData::from_string(namespace_inner.as_real_string()));
                 },
+                "config" => {
+                    let rest_path = id.path.into_iter().skip(2).map(|v| v.to_owned()).collect::<Vec<String>>().join("/");
+                    let id_for_store = self.instance.new_id("0/config".to_owned() + "/" + rest_path.as_str())?;
+                    let store = self.instance.store.lock()?;
+                    let data = store.get_value_data_full(id_for_store)?;
+                    return Ok(data);
+                }
                 _ => {},
             }
             return Err(mize_err!("a /self path, but the next element in the path '{:?}' is not valid", id.nth_part(1)));
@@ -78,7 +87,7 @@ impl Item<'_> {
         let self_namespace_inner = self.instance.self_namespace.lock()?;
 
         if self.id().namespace() == self_namespace_inner.to_owned() {
-            debug!("getting item from store");
+            debug!("getting item '{}' from store", self.id());
 
             if id.store_part() == "inst" {
                 match id.nth_part(1)? {
@@ -101,6 +110,9 @@ impl Item<'_> {
 
         } else {
             let mut connection = self.instance.get_connection_by_ns(self.id().namespace())?;
+
+            debug!("getting item '{}' from connection '{}' from store", self.id(), connection.id);
+
             let msg = MizeMessage::new_get(self.id(), connection.id);
             connection.send(msg);
             let data = self.instance.give_msg_wait(self.id())?;
@@ -265,7 +277,7 @@ pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
         }
 
         let path = option.split("=").nth(0)
-            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing beforee =)", option)))?;
+            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing before =)", option)))?;
         let value = option.split("=").nth(1)
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
         let mut path_vec = Vec::new();
