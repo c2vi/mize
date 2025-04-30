@@ -3,12 +3,13 @@
 , self
 , defaultMizeConfig
 , mize_modules
-, localSystem
+, buildSystem
 , nixpkgs
 , rust-overlay
 , crane
 , fenix
 , stdenv
+, lib ? pkgs.lib
 , ...
 }:
 rec {
@@ -17,92 +18,95 @@ rec {
   
 
   getCrossSystem = system: let
-    crossSystem = (if builtins.isString system then (pkgs.lib.systems.parse.mkSystemFromString system) else system)
+    hostSystem = (if builtins.isString system then (pkgs.lib.systems.parse.mkSystemFromString system) else system)
       // rec {
-        name = if crossSystem.vendor != "unknown" 
-          then "${crossSystem.cpu.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}"
-          else "${crossSystem.cpu.name}-${crossSystem.vendor.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}";
-        nameFull = "${crossSystem.cpu.name}-${crossSystem.vendor.name}-${crossSystem.kernel.name}-${crossSystem.abi.name}";
+        name = if hostSystem.vendor != "unknown" 
+          then "${hostSystem.cpu.name}-${hostSystem.kernel.name}-${hostSystem.abi.name}"
+          else "${hostSystem.cpu.name}-${hostSystem.vendor.name}-${hostSystem.kernel.name}-${hostSystem.abi.name}";
+        nameFull = "${hostSystem.cpu.name}-${hostSystem.vendor.name}-${hostSystem.kernel.name}-${hostSystem.abi.name}";
         nameRust = nameFull;
         config = nameFull;
+        isCross = system != buildSystem;
+        isNative = system == buildSystem;
       };
-  in crossSystem;
+  in hostSystem;
+
+
+  # get a list of all modules
+  # aka folders with a mize_module.nix in them
+  module_list_drv = path: pkgs.stdenv.mkDerivation {
+    name = "mize_module_list";
+    dontUnpack = true;
+    configurePhase = "";
+    buildPhase = ''
+      mkdir -p $out
+      touch $out/modules_to_build
+
+      find ${path} -not -type d -name mize_module.nix | while read p; do
+        (echo "$p" >> $out/modules_to_build; echo "found module $p")
+      done
+
+      exit 0
+    '';
+  };
+
+  findModules = path: let
+    mize_module_no_externals = builtins.getEnv "MIZE_MODULE_NO_EXTERNALS";
+    module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
+    module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
+    getExternals = path: map findModules ((pkgs.callPackage ((import path).externals or (args: [])) {}));
+    in  module_list ++ (if mize_module_no_externals != "" then [] else (map getExternals module_list));
+
+
+  modulesFileList = let
+    from_mize_modules_repo = findModules mize_modules;
+    mize_module_no_repo = builtins.getEnv "MIZE_MODULE_NO_REPO";
+    in pkgs.lib.lists.flatten (from_env_var ++ (if mize_module_no_repo != "" then [] else from_mize_modules_repo) ++ (findModules self));
+
+  mize_module_path = builtins.getEnv "MIZE_MODULE_PATH";
+  dirs_from_path = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString ":" mize_module_path);
+  dirs_in_nix_store = map (path: builtins.fetchGit {
+      url = path;
+    }) dirs_from_path;
+  from_env_var = map findModules dirs_in_nix_store;
+
 
 
   buildMizeForSystem = system: let
-    crossSystem = getCrossSystem system;
+    hostSystem = getCrossSystem system;
 
-    pkgsCross = import nixpkgs { inherit localSystem crossSystem; overlays = [ rust-overlay.overlays.default ]; };
+    pkgsCross = import nixpkgs { inherit buildSystem hostSystem; overlays = [ rust-overlay.overlays.default ]; };
 
-    pkgsNative = import nixpkgs { inherit localSystem; overlays = [ rust-overlay.overlays.default ]; };
-
-    # get a list of all modules
-    # aka folders with a mize_module.nix in them
-    module_list_drv = path: pkgs.stdenv.mkDerivation {
-      name = "mize_module_list";
-      dontUnpack = true;
-      configurePhase = "";
-      buildPhase = ''
-        mkdir -p $out
-        touch $out/modules_to_build
-
-        find ${path} -not -type d -name mize_module.nix | while read p; do
-          (echo "$p" >> $out/modules_to_build; echo "found module $p")
-        done
-
-        exit 0
-      '';
-    };
-
-
-
-    mize_module_path = builtins.getEnv "MIZE_MODULE_PATH";
-    dirs_from_path = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString ":" mize_module_path);
-    dirs_in_nix_store = map (path: builtins.fetchGit {
-        url = path;
-      }) dirs_from_path;
-    from_env_var = map findModules dirs_in_nix_store;
-    mizeMdules = let
-      from_mize_modules_repo = findModules mize_modules;
-      mize_module_no_repo = builtins.getEnv "MIZE_MODULE_NO_REPO";
-      in pkgs.lib.lists.flatten (from_env_var ++ (if mize_module_no_repo != "" then [] else from_mize_modules_repo));
-
-
-    findModules = path: let
-      mize_module_no_externals = builtins.getEnv "MIZE_MODULE_NO_EXTERNALS";
-      module_list_string = builtins.readFile "${module_list_drv path}/modules_to_build";
-      module_list = pkgs.lib.lists.remove "" (pkgs.lib.strings.splitString "\n" module_list_string);
-      getExternals = path: map findModules ((pkgs.callPackage ((import path).externals or (args: [])) {}));
-      in  module_list ++ (if mize_module_no_externals != "" then [] else (map getExternals module_list));
+    pkgsNative = import nixpkgs { inherit buildSystem; overlays = [ rust-overlay.overlays.default ]; };
 
 
 
 
     craneLib = 
-      if crossSystem.kernel.name == "windows"
+      if hostSystem.kernel.name == "windows"
         then 
-          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${localSystem}.combine [
-            #fenix.packages.${localSystem}.minimal.rustc
-            #fenix.packages.${localSystem}.minimal.cargo
-            fenix.packages.${localSystem}.stable.toolchain
-            fenix.packages.${localSystem}.targets."${crossSystem.cpu.name}-pc-windows-gnu".stable.toolchain
+          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${buildSystem}.combine [
+            #fenix.packages.${buildSystem}.minimal.rustc
+            #fenix.packages.${buildSystem}.minimal.cargo
+            fenix.packages.${buildSystem}.stable.toolchain
+            fenix.packages.${buildSystem}.targets."${hostSystem.cpu.name}-pc-windows-gnu".stable.toolchain
           ])
 
-      else if crossSystem.cpu.name == "wasm32"
+      else if hostSystem.cpu.name == "wasm32"
         then
-          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${localSystem}.combine [
-            fenix.packages.${localSystem}.targets.wasm32-unknown-unknown.latest.toolchain
-            fenix.packages.${localSystem}.latest.toolchain
+          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${buildSystem}.combine [
+            fenix.packages.${buildSystem}.targets.wasm32-unknown-unknown.latest.toolchain
+            fenix.packages.${buildSystem}.latest.toolchain
           ])
-      else if crossSystem.name == "x86_64-linux-gnu"
+      else if hostSystem.name == "x86_64-linux-gnu"
         then
           builtins.trace "x86_64-linux-gnu hackfix...."
-          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${localSystem}.combine [
-            fenix.packages.${localSystem}.stable.toolchain
+          (crane.mkLib pkgs).overrideToolchain (fenix.packages.${buildSystem}.combine [
+            fenix.packages.${buildSystem}.stable.toolchain
           ])
 
       else
-          (crane.mkLib pkgsCross).overrideToolchain (p: fenix.packages.${localSystem}.stable.toolchain)
+          (crane.mkLib pkgsCross).overrideToolchain (p: fenix.packages.${buildSystem}.stable.toolchain)
       ;
 
   toolchain_version_drv = pkgs.stdenv.mkDerivation {
@@ -125,12 +129,13 @@ rec {
 
     mkSelString = attrs: builtins.toJSON (attrs // {
       inherit toolchain_version;
-      system = crossSystem.nameFull;
-      mize_version = main-default.version;
+      system = hostSystem.nameFull;
+      mize_version = "0.0.1";
     });
 
 
     toolchain_version = pkgs.lib.strings.removeSuffix "\n" (builtins.readFile "${toolchain_version_drv}/rustc-version");
+
 
     mkMizeModule = attrs: (if builtins.hasAttr "drvFunc" attrs then attrs.drvFunc else pkgsCross.stdenv.mkDerivation) ( rec {
       name = attrs.modName;
@@ -139,75 +144,93 @@ rec {
         inherit (attrs) modName;
       });
       hash = builtins.substring 0 32 (builtins.hashString "sha256" selector_string);
-    } // attrs);
+    } 
+    // (lib.attrsets.removeAttrs attrs ["drvFunc"] )
+    );
 
 
 
-    ########## build Rust Module
-    mkMizeRustModule = attrs: craneLib.buildPackage (attrs // {
-      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
-      mizeInstallPhase = attrs.mizeInstallPhase or ''
-        mkdir -p $out/lib/
-        cp $build_dir/target/${crossSystem.nameRust}/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
-      '';
-      mizeBuildPhase = attrs.mizeBuildPhase or ''
-        cargo --color always build --target ${crossSystem.nameRust} --manifest-path $build_dir/Cargo.toml --lib
-      '';
-      selector_string = mkSelString (attrs.select or {} // {
-        inherit (attrs) modName;
-      });
+    ########## build a Rust Module
+    mkMizeRustModule = attrs: mkMizeModule (
+      # general stuff
+      {
+        drvFunc = craneLib.buildPackage;
+        MIZE_BUILD_CONFIG = mizeBuildConfigStr;
+        mizeInstallPhase = attrs.mizeInstallPhase or ''
+          mkdir -p $out/lib/
+          cp $build_dir/target/${hostSystem.nameRust}/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
+        '';
+        mizeBuildPhase = attrs.mizeBuildPhase or ''
+          cargo --color always build --target ${hostSystem.nameRust} --manifest-path $build_dir/Cargo.toml --lib
+        '';
+        selector_string = mkSelString (attrs.select or {} // {
+          inherit (attrs) modName;
+        });
 
-      # rename the so library, in case the lib.name in your Cargo.toml is not like mize_module_mylib
-      postInstall = (attrs.postInstall or "") + ''
-        if [ ! -f "$out/lib/libmize_module_${attrs.modName}" ]; then
-          echo RENAMING $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so
-          mv $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so || true
+      }
 
-          echo RENAMING $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a
-          mv $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a && true # ignore if there is no .a file || true
-          echo "$FILE"
-        fi
-      '';
-    }
-    # linux specific stuff
-    // (if crossSystem.kernel.name == "linux" then {
-      "CARGO_TARGET_${builtins.replaceStrings ["-"] ["_"] (pkgsCross.lib.strings.toUpper crossSystem.nameFull)}_LINKER" = "${pkgsCross.stdenv.cc.targetPrefix}cc";
-      HOST_CC = "${pkgsCross.stdenv.cc.nativePrefix}cc";
-      TARGET_CC = "${pkgsCross.stdenv.cc.targetPrefix}cc";
-      CARGO_BUILD_TARGET = crossSystem.nameFull;
-      nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
-        pkgsCross.stdenv.cc
-      ];
-    } else {})
 
-    # add wasm stuff
-    // (if crossSystem.cpu.name == "wasm32" then {
-      CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+      # linux specific stuff
+      // (lib.attrsets.optionalAttrs (hostSystem.kernel.name == "linux") {
+        # rename the so library, in case the lib.name in your Cargo.toml is not like mize_module_mylib
+        postInstall = (attrs.postInstall or "") + ''
+          if [ ! -f "$out/lib/libmize_module_${attrs.modName}" ]; then
+            echo RENAMING $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so
+            mv $out/lib/${attrs.modName}.so to $out/lib/libmize_module_${attrs.modName}.so || true
 
-      # checks fail on wasm
-      doCheck = false;
-    } else {})
+            echo RENAMING $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a
+            mv $out/lib/${attrs.modName}.a to $out/lib/libmize_module_${attrs.modName}.a && true # ignore if there is no .a file || true
+            echo "$FILE"
+          fi
+        '';
+      })
+      
 
-    # add windows stuff
-    // (if crossSystem.kernel.name == "windows" then {
-      strictDeps = true;
-      doCheck = false;
+      # linux cross stuff
+      // (lib.attrsets.optionalAttrs (hostSystem.kernel.name == "linux" && hostSystem.isCross) {
+        "CARGO_TARGET_${builtins.replaceStrings ["-"] ["_"] (pkgsCross.lib.strings.toUpper hostSystem.nameFull)}_LINKER" = "${pkgsCross.stdenv.cc.targetPrefix}cc";
+        HOST_CC = "${pkgsCross.stdenv.cc.nativePrefix}cc";
+        TARGET_CC = "${pkgsCross.stdenv.cc.targetPrefix}cc";
+        CARGO_BUILD_TARGET = hostSystem.nameFull;
+        nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
+          pkgsCross.stdenv.cc
+        ];
+      })
 
-      CARGO_BUILD_TARGET = "${crossSystem.cpu.name}-pc-windows-gnu";
+      # wasm stuff
+      // (lib.attrsets.optionalAttrs (hostSystem.cpu.name == "wasm32") {
+        CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
 
-      # fixes issues related to libring
-      TARGET_CC = "${pkgs.pkgsCross.mingwW64.stdenv.cc}/bin/${pkgs.pkgsCross.mingwW64.stdenv.cc.targetPrefix}cc";
+        # checks fail on wasm
+        doCheck = false;
+      })
 
-      #fixes issues related to openssl
-      OPENSSL_DIR = "${pkgs.openssl.dev}";
-      OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
-      OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
 
-      depsBuildBuild = [
-        pkgs.pkgsCross.mingwW64.stdenv.cc
-        pkgs.pkgsCross.mingwW64.windows.pthreads
-      ];
-    } else {})
+      # add windows stuff
+      // (lib.attrsets.optionalAttrs (hostSystem.kernel.name == "windows") {
+        strictDeps = true;
+        doCheck = false;
+
+        CARGO_BUILD_TARGET = "${hostSystem.cpu.name}-pc-windows-gnu";
+
+        # fixes issues related to libring
+        TARGET_CC = "${pkgs.pkgsCross.mingwW64.stdenv.cc}/bin/${pkgs.pkgsCross.mingwW64.stdenv.cc.targetPrefix}cc";
+
+        #fixes issues related to openssl
+        OPENSSL_DIR = "${pkgs.openssl.dev}";
+        OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+        OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
+
+        depsBuildBuild = [
+          pkgs.pkgsCross.mingwW64.stdenv.cc
+          pkgs.pkgsCross.mingwW64.windows.pthreads
+        ];
+      })
+
+
+      # add the attrs passed to mkMizeRustModule
+      // attrs
+
     );
 
 
@@ -215,14 +238,14 @@ rec {
     buildModule = path: extraArgs: pkgs.callPackage ((import path).module or (attrs: null)) ({
         inherit buildMizeForSystem mizeBuildConfig mizeBuildConfigStr;
         inherit mkSelString craneLib toolchain_version;
-        inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
-        mize_version = main-default.version;
+        inherit mkMizeModule mkMizeRustModule buildModule findModules hostSystem pkgsCross pkgsNative mkMizeRustShell;
+        mize_version = "0.0.1";
       } // extraArgs );
 
     buildLib = path: extraArgs: pkgs.callPackage ((import path).lib or (args: {})) {
         inherit mkSelString craneLib toolchain_version;
-        inherit mkMizeModule mkMizeRustModule buildModule findModules crossSystem pkgsCross pkgsNative mkMizeRustShell;
-        mize_version = main-default.version;
+        inherit mkMizeModule mkMizeRustModule buildModule findModules hostSystem pkgsCross pkgsNative mkMizeRustShell;
+        mize_version = "0.0.1";
     };
 
 
@@ -236,111 +259,6 @@ rec {
       settingsFormat = pkgs.formats.toml { };
     in settingsFormat.generate "mize-build-config.toml" {
       config = mizeBuildConfig;
-    };
-
-    ####### build mize
-    main-default = craneLib.buildPackage ({
-      src = "${self}";
-      cargoExtraArgs = "--bin mize --features os-target";
-      # CARGO_PROFILE = "dev"; does not work...
-      strictDeps = true;
-
-      nativeBuildInputs = [ 
-        pkgsCross.buildPackages.pkg-config
-        #pkgsCross.buildPackages.nasm
-        #pkgsCross.buildPackages.cmake
-      ];
-
-      buildInputs = [
-          (if crossSystem.nameFull == "x86_64-unknown-linux-gnu" then pkgs.openssl else pkgsCross.openssl)
-      ];
-
-      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
-
-      # patch the interpreter to run on most linux-gnu distros
-      postBuild = 
-        if crossSystem.cpu.name == "x86_64"
-          then "patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 /build/source/target/release/mize"
-        else if crossSystem.cpu.name == "aarch64"
-          then "patchelf --set-interpreter /lib64/ld-linux-aarch64.so.2 /build/source/target/${crossSystem.nameFull}/release/mize"
-          else ""
-      ;
-
-    }
-    // (if crossSystem.name == "x86_64-linux-gnu" then builtins.trace "another x86_64-linux hackfix..." {} else {
-      CARGO_BUILD_TARGET = crossSystem.nameFull;
-      "CARGO_TARGET_${builtins.replaceStrings ["-"] ["_"] (pkgsCross.lib.strings.toUpper crossSystem.nameFull)}_LINKER" = "${pkgsCross.stdenv.cc.targetPrefix}cc";
-      HOST_CC = "${pkgsCross.stdenv.cc.nativePrefix}cc";
-      TARGET_CC = "${pkgsCross.stdenv.cc.targetPrefix}cc";
-    })
-    );
-
-    main-win = craneLib.buildPackage {
-      src = craneLib.cleanCargoSource ./.;
-
-      #nativeBuildInputs = [ pkgsCross.buildPackages.nasm pkgsCross.buildPackages.cmake ];
-
-      strictDeps = true;
-      doCheck = false;
-
-      cargoExtraArgs = "--bin mize --features os-target";
-
-      CARGO_BUILD_TARGET = "${crossSystem.cpu.name}-pc-windows-gnu";
-
-      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
-
-      # fixes issues related to libring
-      TARGET_CC = "${pkgs.pkgsCross.mingwW64.stdenv.cc}/bin/${pkgs.pkgsCross.mingwW64.stdenv.cc.targetPrefix}cc";
-
-      #fixes issues related to openssl
-      OPENSSL_DIR = "${pkgs.openssl.dev}";
-      OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
-      OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
-
-      depsBuildBuild = [
-        pkgs.pkgsCross.mingwW64.stdenv.cc
-        pkgs.pkgsCross.mingwW64.windows.pthreads
-      ];
-    };
-
-
-    # - https://github.com/ipetkov/crane/issues/362#issuecomment-1683220603
-    wasmArtifacts = craneLib.buildDepsOnly ({
-      src = self;
-      doCheck = false; # tests does not work in wasm
-      CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-      cargoExtraArgs = "--features wasm-target --no-default-features";
-      RUSTFLAGS="-C linker=wasm-ld";
-      buildInputs = with pkgs; [ cargo-binutils lld ];
-    });
-    main-wasm = craneLib.mkCargoDerivation {
-      name = "mize-npm-package";
-
-      # i can't use CARGO_BUILD_TARGET to set the target
-      # because then the cargo install run by wasm-pack tries to build the wasm-bindgen-cli for a wasm target...
-
-      src = self;
-
-      doInstallCargoArtifacts = false;
-
-      cargoArtifacts = wasmArtifacts;
-      doCheck = false;
-
-      buildPhaseCargoCommand = ''
-          mkdir -p $out/pkg
-
-          HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --target no-modules --out-dir $out/pkg --scope=c2vi -- --features wasm-target --no-default-features
-      '';
-
-      postInstall = ''
-      rm -rf $out/target.tar.zst
-
-      cat $src/src/platform/wasm/init.js >> $out/pkg/mize.js
-      '';
-
-      buildInputs = with pkgsNative; [ wasm-bindgen-cli binaryen wasm-pack ];
-
-      MIZE_BUILD_CONFIG = mizeBuildConfigStr;
     };
 
 
@@ -384,7 +302,7 @@ rec {
 
           wasm-pack #pkg-config openssl #cargo rustc
           cargo-generate
-          (fenix.packages.${localSystem}.combine [ 
+          (fenix.packages.${buildSystem}.combine [ 
             fenix.packages.${system}.stable.toolchain
             fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
             fenix.packages.${system}.stable.toolchain
@@ -408,29 +326,26 @@ rec {
   ################# output attrset ################### 
 
     in rec {
-      inherit toolchain_version_drv pkgsCross craneLib;
-
-      inherit mize_module_path dirs_from_path dirs_in_nix_store from_env_var;
 
       devShell = mainDevShell;
 
-      main = 
-        if crossSystem.kernel.name == "windows"
-          then main-win
-        else if crossSystem.cpu.name == "wasm32"
-          then main-wasm
-        else main-default
-        ;
+      main = modules.mize;
   
-      system = crossSystem;
+      system = hostSystem;
 
-      modulesListDrv = module_list_drv mize_modules;
-      modulesFileList = mizeMdules;
+
+      modules = builtins.listToAttrs ( map ( mod: { name = mod.modName; value = mod; } ) modulesList );
+
+      # for debugging
+
       modulesLibList = map (mod: buildLib mod {}) modulesFileList;
       modulesLib = pkgs.lib.lists.foldr (a: b: b // a) {} modulesLibList;
       modulesList = pkgs.lib.lists.remove null (map (mod: (buildModule mod modulesLib)) modulesFileList);
 
-      modules = builtins.listToAttrs ( map ( mod: { name = mod.modName; value = mod; } ) modulesList );
+      inherit toolchain_version_drv pkgsCross craneLib;
+
+      inherit mize_module_path dirs_from_path dirs_in_nix_store from_env_var;
+
   };
 
 
@@ -447,7 +362,7 @@ rec {
   mkModulesInstallPhase = modules: pkgs.lib.concatStringsSep "\n" (map mkModuleInstallPhase modules);
 
   mkModuleInstallPhase = module: let
-   hash = module.hach; 
+   hash = module.hash; 
   in ''
     echo got module: ${module.name}
     echo out: $out
@@ -472,7 +387,7 @@ rec {
       mkdir -p $out/mize
       mkdir -p $out/mize/dist
 
-    '' + pkgs.lib.concatStringsSep "\n" (map mkInstallPhase (map buildMizeForSystem systems));
+    '' ;# + pkgs.lib.concatStringsSep "\n" (map mkInstallPhase (map buildMizeForSystem systems));
     
 
 	  nativeBuildInputs = [
@@ -482,6 +397,17 @@ rec {
   moduleShells = system: let
     mizeFor = buildMizeForSystem system;
   in builtins.listToAttrs ( map ( mod: { name = mod.modName; value = (mod.devShell); } ) mizeFor.modulesList );
+
+  random = systems: rec {
+
+    distInstallPhase = map mkInstallPhase (map buildMizeForSystem systems);
+    mizeList = map buildMizeForSystem systems;
+    mize-x86_64-linux = buildMizeForSystem "x86_64-linux";
+    mize-x86_64-linux-installPhase = mkInstallPhase mize-x86_64-linux;
+    modulesListDrv = module_list_drv mize_modules;
+    inherit modulesFileList;
+
+  };
 
 }
 

@@ -1,0 +1,2 @@
+
+nix develop . --override-input nixpkgs github:NixOS/nixpkgs/ea6033ce4ddf2c0ede2ea147a450d4f880796128

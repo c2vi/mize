@@ -73,7 +73,7 @@ let
   mizeLib = import ./lib.nix {
     inherit inputs nixpkgs pkgs self osCrane defaultMizeConfig mize_modules;
     inherit rust-overlay crane fenix;
-    localSystem = system;
+    buildSystem = system;
     stdenv = pkgs.stdenv;
   };
 
@@ -91,12 +91,19 @@ in {
         mizes = map mizeLib.buildMizeForSystem systems;
       in builtins.listToAttrs ( map ( mize: { name = mize.system.name; value = mize; } ) mizes );
 
-      #pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-pc-windows-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
+      dist = mizeLib.dist systems;
+
+      random = mizeLib.random systems;
+
+      inherit mizeLib;
+
+
+      #pkgsCross = import nixpkgs { buildSystem = system; crossSystem = { config = "x86_64-pc-windows-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
 
       pkgsTest = pkgs;
 
-      #pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-w64-windows-mingw"; }; overlays = [ rust-overlay.overlays.default ]; };
-      pkgsCross = import nixpkgs { localSystem = system; crossSystem = { config = "x86_64-unknown-linux-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
+      #pkgsCross = import nixpkgs { buildSystem = system; crossSystem = { config = "x86_64-w64-windows-mingw"; }; overlays = [ rust-overlay.overlays.default ]; };
+      pkgsCross = import nixpkgs { buildSystem = system; crossSystem = { config = "x86_64-unknown-linux-gnu"; }; overlays = [ rust-overlay.overlays.default ]; };
       craneLib = (crane.mkLib pkgsCross).overrideToolchain (p: p.rust-bin.stable.latest.default);
 
 
@@ -113,8 +120,6 @@ in {
           });
         };
       };
-
-      webfiles = mizeLib.webfiles systems;
 
       default = osCrane.buildPackage {
         src = "${self}";

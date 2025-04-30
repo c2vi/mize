@@ -112,7 +112,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
         #[cfg(target_family = "windows")]
         {
-            error!("CONNECTING... would connect, but that is not implemented on windows yet");
+            error!("CONNECTING... would connect, but that is not imon't identify as anything, to not cause anyone problems... So that everybody can be satisfied...plemented on windows yet");
         }
 
     } else {
