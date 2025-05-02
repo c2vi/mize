@@ -2,6 +2,7 @@
 /target
 /folder
 /result
+/dist
 
 # I put testing stuff for this projekt that I don't want to push to github into a folder called gitignore
 /gitignore
