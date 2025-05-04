@@ -1,6 +1,6 @@
 {
 
-module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }: 
+module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }: 
 
   mkMizeRustModule (
 
@@ -18,6 +18,10 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
   // (lib.attrsets.optionalAttrs (hostSystem.kernel.name == "linux") {
       strictDeps = true;
       cargoExtraArgs = "--bin mize --features os-target";
+      mizeInstallPhase = ''
+        mkdir -p $out
+        cp $build_dir/target/${hostSystem.nameRust}/$debugOrRelease/mize $out/
+      '';
 
   })
 
@@ -25,7 +29,7 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
 
   
   # x86_64-linux stuff
-  // (lib.attrsets.optionalAttrs (hostSystem.name == "x86_64-linux-gnu") {
+  // (lib.attrsets.optionalAttrs (hostSystem.name == "x86_64-linux-gnu") rec {
 
 
       nativeBuildInputs = [
@@ -35,8 +39,12 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
 
 
       buildInputs = [
-          (if hostSystem.nameFull == "x86_64-unknown-linux-gnu" then pkgs.openssl else pkgsCross.openssl)
+          pkgs.openssl
       ];
+
+      devShell = mkMizeRustShell {
+        inherit buildInputs nativeBuildInputs;
+      };
 
 
       # patch the interpreter to run on most linux-gnu distros
@@ -80,7 +88,7 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
 
 
   #browser stuff
-  // (lib.attrsets.optionalAttrs (hostSystem.name == "wasm32-none-unknown") {
+  // (lib.attrsets.optionalAttrs (hostSystem.name == "wasm32-none-unknown") rec {
 
     cargoArtifacts = craneLib.buildDepsOnly ({
       src = ./.;
@@ -90,6 +98,12 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
       RUSTFLAGS="-C linker=wasm-ld";
       buildInputs = with pkgs; [ cargo-binutils lld ];
     });
+
+    mizeBuildPhase = ''
+      cd $build_dir
+      RUST_LOG=off wasm-pack build --target no-modules --dev --out-dir $out -- --features wasm-target --no-default-features
+    '';
+    mizeInstallPhase = "";
 
     doInstallCargoArtifacts = false;
 
@@ -107,7 +121,11 @@ module = { mkMizeRustModule, hostSystem, pkgsCross, pkgs, lib, craneLib, ... }:
     cat $src/src/platform/wasm/init.js >> $out/pkg/mize.js
     '';
 
-    buildInputs = with pkgs; [ wasm-bindgen-cli binaryen wasm-pack ];
+    nativeBuildInputs = with pkgs; [ wasm-bindgen-cli binaryen wasm-pack ];
+
+    devShell = mkMizeRustShell {
+      inherit nativeBuildInputs;
+    };
 
   })
 

@@ -75,7 +75,7 @@ rec {
   buildMizeForSystem = system: let
     hostSystem = getCrossSystem system;
 
-    pkgsCross = import nixpkgs { inherit buildSystem hostSystem; overlays = [ rust-overlay.overlays.default ]; };
+    pkgsCross = import nixpkgs { inherit buildSystem hostSystem; localSystem = buildSystem; overlays = [ rust-overlay.overlays.default ]; };
 
     pkgsNative = import nixpkgs { inherit buildSystem; overlays = [ rust-overlay.overlays.default ]; };
 
@@ -161,11 +161,12 @@ rec {
           cp $build_dir/target/${hostSystem.nameRust}/$debugOrRelease/libmize_module_${attrs.modName}.so $out/lib/
         '';
         mizeBuildPhase = attrs.mizeBuildPhase or ''
-          cargo --color always build --target ${hostSystem.nameRust} --manifest-path $build_dir/Cargo.toml --lib
+          cargo --color always build --target ${hostSystem.nameRust} ${if builtins.hasAttr "cargoExtraArgs" attrs then attrs.cargoExtraArgs else ""} --manifest-path $build_dir/Cargo.toml --lib
         '';
         selector_string = mkSelString (attrs.select or {} // {
           inherit (attrs) modName;
         });
+        devShell = if builtins.hasAttr "devShell" attrs then attrs.devShell else mkMizeRustShell {};
 
       }
 
