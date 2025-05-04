@@ -272,20 +272,29 @@ pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
     }
 
     for option in data_string.split(":") {
+        //trace!("data_from_string: option: {}", option);
         if option == "".to_owned() {
             continue;
         }
 
         let path = option.split("=").nth(0)
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing before =)", option)))?;
+
+        //trace!("data_from_string: path: {}", path);
+
         let value = option.split("=").nth(1)
             .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
+        //trace!("data_from_string: value: {}", value);
+        
         let mut path_vec = Vec::new();
         path_vec.extend(path.split("."));
+
+        //trace!("data_from_string: path_vec: {:?}", path_vec);
 
         data.set_path(path_vec, ItemData::parse(value))?;
     }
 
+    trace!("data_from_string: data: {}", data);
     return Ok(data);
 }
 
@@ -369,6 +378,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
     let path_el = match path_iter.nth(0) {
         Some(val) => val,
         None => {
+            //trace!("item_data_set_path: base_case");
             // our base case
             *data = data_to_set.to_owned();
             return Ok(());
@@ -379,7 +389,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
             for (key, val) in &mut * map {
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
-                        //path_iter.next();
+                        //trace!("item_data_set_path: setting key {key_str} in map with recursive call");
                         return item_data_set_path(val, path_iter.collect(), data_to_set);
                     }
                 }
@@ -387,11 +397,16 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
 
             // if we get here, that means, the key (which is the variable path_el) does not exist
             // in the map
-            // so add it
-            map.push((CborValue::Text(path_el.clone()), data_to_set.to_owned()));
+            // so add it... but also with a recursive call which is needed, in case path_iter
+            // longer than 1
+            //trace!("item_data_set_path: adding key {path_el} to map");
+            let mut inner_value = CborValue::Null;
+            item_data_set_path(&mut inner_value, path_iter.collect(), data_to_set);
+            map.push((CborValue::Text(path_el.clone()), inner_value));
             return Ok(());
         },
         CborValue::Null => {
+            //trace!("item_data_set_path: CborValue::Null case");
             let mut inner_value = CborValue::Null;
             item_data_set_path(&mut inner_value, path_iter.collect(), data_to_set);
 

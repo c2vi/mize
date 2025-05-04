@@ -102,6 +102,7 @@ module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, 
     mizeBuildPhase = ''
       cd $build_dir
       RUST_LOG=off wasm-pack build --target no-modules --dev --out-dir $out -- --features wasm-target --no-default-features
+      cat $build_dir/src/platform/wasm/init.js >> $out/mize.js
     '';
     mizeInstallPhase = "";
 

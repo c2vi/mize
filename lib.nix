@@ -129,7 +129,7 @@ rec {
 
     mkSelString = attrs: builtins.toJSON (attrs // {
       inherit toolchain_version;
-      system = hostSystem.nameFull;
+      system = hostSystem.name;
       mize_version = "0.0.1";
     });
 

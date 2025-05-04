@@ -150,10 +150,24 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
 
     let mut selector_data = instance.get("0/config/selector")?.as_data_full()?;
 
-    selector_data.set_path("modName", name)?;
+    // handle the case, when we want a module for not the system we are running on...
+    let mut name_parts = name.split(".");
+    if name_parts.nth(0).ok_or(mize_err!("no 0th element in the modName"))? == "cross" {
+        let system = name_parts.nth(1).ok_or(mize_err!("no 1th element in the modName"))?;
+        let mod_name: String = name_parts.skip(2).collect();
+        if mod_name == "" {
+            return Err(mize_err!("no 2nd element in the modName"));
+        }
+
+        selector_data.set_path("system", system)?;
+        selector_data.set_path("modName", mod_name)?;
+    } else {
+        selector_data.set_path("modName", name)?;
+    }
 
     selector_data.merge(options);
 
+    // important to produce the same hash for the sama selector data
     selector_data.sort_keys();
 
     let selector_str = selector_data.to_json()?;
@@ -217,6 +231,7 @@ fn download_module(instance: &mut Instance, store_path: &str, module_url: &str, 
 pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<String> {
 
     if let Ok(module_path) = instance.get(format!("self/config/module_dir/{}", module_name))?.value_string() {
+        // in case a dir is configured, which holds the modules output
         return Ok(module_path);
     } else {
         // if null, load it from the url
