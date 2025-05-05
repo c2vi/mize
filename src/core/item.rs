@@ -133,14 +133,27 @@ impl Item<'_> {
         data.merge(new_data);
         trace!("item::merge new_data: {:?}", data);
 
-        if self.instance.we_are_namespace()? {
+        // handle the case of /self/*
+        if self.id().store_part() == "self" {
+            let rest_path = self.id().path.into_iter().skip(1).map(|v| v.to_owned()).collect::<Vec<String>>().join("/");
+            let id_for_store = self.instance.new_id("0".to_owned() + "/" + rest_path.as_str())?;
+
+            let store_inner = self.instance.store.lock()?;
+            store_inner.set(id_for_store, data)?;
+
+
+        } else if self.instance.we_are_namespace()? {
+
             let store_inner = self.instance.store.lock()?;
             store_inner.set(self.id(), data)?;
+
         } else {
+
             let namespace = self.id().namespace();
             let mut connection = self.instance.get_connection_by_ns(namespace)?;
             let msg = MizeMessage::new_update_request(self.id(), data, connection.id);
             connection.send(msg)?;
+
         }
 
         Ok(())

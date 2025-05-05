@@ -42,7 +42,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
             let config = config_from_file(config_file_path)?;
             debug!("env var MIZE_CONFIG_FILE present");
             instance.set_blocking("0", config)?;
-            trace!("config after MIZE_CONFIG_FILE env var: {}", instance.get("0/config")?);
+            trace!("config after MIZE_CONFIG_FILE env var: {}", instance.get("self/config")?);
         }
         Err(var_err) => match var_err {
             VarError::NotPresent => {
@@ -59,8 +59,8 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         Ok(config_string) => {
             let config = data_from_string(config_string)?;
             debug!("env var MIZE_CONFIG present");
-            instance.set_blocking("0/config", config)?;
-            trace!("config after MIZE_CONFIG env var: {}", instance.get("0/config")?);
+            instance.set_blocking("self/config", config)?;
+            trace!("config after MIZE_CONFIG env var: {}", instance.get("self/config")?);
         }
         Err(var_err) => match var_err {
             VarError::NotPresent => {
@@ -75,7 +75,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
     ////// if a config.store_path is set, upgrade to the filestore there
     let mut test = instance.get("0")?.as_data_full()?;
-    let mut store_path = match instance.get("0/config/store_path")?.value_string() {
+    let mut store_path = match instance.get("self/config/store_path")?.value_string() {
         Ok(path) => {
             path
         },
@@ -88,9 +88,9 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
             let store_path = home_dir.to_owned() + "/.mize";
 
-            instance.set_blocking("0/config/store_path", store_path.clone().into_item_data())?;
+            instance.set_blocking("self/config/store_path", store_path.clone().into_item_data())?;
 
-            let store_path = instance.get("0/config/store_path")?.value_string()?;
+            let store_path = instance.get("self/config/store_path")?.value_string()?;
 
             println!("store_path: {}", store_path);
 
@@ -148,7 +148,7 @@ pub fn seconds_since_modification(path: &Path) -> MizeResult<u64> {
 
 pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemData) -> MizeResult<(String, String)> {
 
-    let mut selector_data = instance.get("0/config/selector")?.as_data_full()?;
+    let mut selector_data = instance.get("self/config/selector")?.as_data_full()?;
 
     // handle the case, when we want a module for not the system we are running on...
     let mut name_parts = name.split(".");
@@ -230,7 +230,8 @@ fn download_module(instance: &mut Instance, store_path: &str, module_url: &str, 
 
 pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<String> {
 
-    if let Ok(module_path) = instance.get(format!("self/config/module_dir/{}", module_name))?.value_string() {
+    let module_name_with_slashes = module_name.replace(".", "/");
+    if let Ok(module_path) = instance.get(format!("self/config/module_dir/{}", module_name_with_slashes))?.value_string() {
         // in case a dir is configured, which holds the modules output
         return Ok(module_path);
     } else {
@@ -252,16 +253,11 @@ pub fn fetch_module(instance: &mut Instance, module_name: &str) -> MizeResult<St
 
 pub fn load_module(instance: &mut Instance, module_name: &str, path: Option<String>) -> MizeResult<()> {
     
-    let module_dir_from_config = instance.get(format!("self/config/module_dir/{}", module_name));
-
     let module_path = if path.is_some() { 
         format!("{}/lib/libmize_module_{}.so", path.unwrap(), module_name)
 
-    } else if module_dir_from_config.is_ok() {
-        format!("{}/lib/libmize_module_{}.so", module_dir_from_config.unwrap().value_string()?, module_name)
-
     } else { 
-        format!("{}/lib/libmmize_module_{}.so", fetch_module(instance, module_name)?, module_name) 
+        format!("{}/lib/libmize_module_{}.so", fetch_module(instance, module_name)?, module_name) 
     };
 
     let lib = unsafe { libloading::Library::new(module_path)? };

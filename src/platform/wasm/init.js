@@ -1,6 +1,6 @@
 
 
-async function init_mize(config) {
+export async function init_mize(config) {
 
 	if ("mize" in window) {
 		window.mize.set("self/config", config)
@@ -8,10 +8,10 @@ async function init_mize(config) {
 	}
 
   let config_str = "";
-  if typeof config == "string" {
+  if (typeof config == "string") {
     config_str = config
 
-  } else if typeof config == "object" {
+  } else if (typeof config == "object") {
     config_str = JSON.stringify(config)
 
   } else {
@@ -20,9 +20,9 @@ async function init_mize(config) {
 
   const { new_js_instance } = wasm_bindgen;
 
-  await wasm_bindgen()
+  await wasm_bindgen(config.module_dir.mize + "/mize_bg.wasm")
 
-  window.mize = await new_js_instance(config)
+  window.mize = await new_js_instance(config_str)
   window.mize.mod = {}
   window.mize.init()
 

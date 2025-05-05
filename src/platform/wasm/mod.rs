@@ -82,6 +82,7 @@ pub struct JsItemHandle {
 
 #[wasm_bindgen]
 pub async fn new_js_instance(config_json_str: String) -> JsInstance {
+    console_log!("hooooooooooooooo");
 
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 

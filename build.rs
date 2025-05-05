@@ -23,4 +23,6 @@ fn main() {
         //.expect("failed to start wasm build");
 
         //to outdir (), using the nightly feature --out-dir to have the result there. By default I get a libhearts.rlib
+
+    println!("cargo:rustc-link-arg=-zstack-size=0x500000");
 }
