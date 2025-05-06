@@ -271,7 +271,6 @@ rec {
         (fenix.packages."x86_64-linux".combine [ 
           fenix.packages."x86_64-linux".stable.toolchain
           fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.stable.toolchain
-          fenix.packages."x86_64-linux".stable.toolchain
         ])
 
         # the shell script, to mk the dist folder, for a standard rust module
@@ -298,37 +297,9 @@ rec {
     });
 
 
-    mainDevShell = pkgs.mkShell {
-        buildInputs = with pkgs; [
-
-          wasm-pack #pkg-config openssl #cargo rustc
-          cargo-generate
-          (fenix.packages.${buildSystem}.combine [ 
-            fenix.packages.${system}.stable.toolchain
-            fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.toolchain
-            fenix.packages.${system}.stable.toolchain
-          ])
-          openssl
-        ];
-
-        nativeBuildInputs = with pkgs; [
-         pkg-config
-        ];
-
-        MIZE_BUILD_CONFIG = mizeBuildConfigStr;
-
-        shellHook = ''
-          export MIZE_CONFIG_FILE=${self}/test-config.toml
-        '';
-    };
-
-
-
   ################# output attrset ################### 
 
     in rec {
-
-      devShell = mainDevShell;
 
       main = modules.mize;
   
