@@ -24,5 +24,5 @@ fn main() {
 
         //to outdir (), using the nightly feature --out-dir to have the result there. By default I get a libhearts.rlib
 
-    println!("cargo:rustc-link-arg=-zstack-size=0x500000");
+    println!("cargo:rustc-link-arg=-zstack-size=0x1000000");
 }
