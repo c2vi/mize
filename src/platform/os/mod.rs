@@ -151,10 +151,12 @@ pub fn get_module_hash(instance: &mut Instance, name: &str, mut options: ItemDat
     let mut selector_data = instance.get("self/config/selector")?.as_data_full()?;
 
     // handle the case, when we want a module for not the system we are running on...
+    println!("get_module_hash: name: {}", name);
     let mut name_parts = name.split(".");
-    if name_parts.nth(0).ok_or(mize_err!("no 0th element in the modName"))? == "cross" {
-        let system = name_parts.nth(1).ok_or(mize_err!("no 1th element in the modName"))?;
-        let mod_name: String = name_parts.skip(2).collect();
+    if name_parts.next().ok_or(mize_err!("no 0th element in the modName"))? == "cross" {
+        let system = name_parts.next().ok_or(mize_err!("no 1th element in the modName"))?;
+        let mod_name: String = name_parts.collect();
+        println!("get_module_hash: mod_name: {}", mod_name);
         if mod_name == "" {
             return Err(mize_err!("no 2nd element in the modName"));
         }
