@@ -1,3 +1,5 @@
+use core::result::Result;
+use core::result::Result::Ok;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -19,6 +21,7 @@ pub type MizeResult<T> = Result<T, MizeError>;
 
 pub trait MizeResultTrait<T> {
     fn critical(self) -> T;
+    fn as_std(self) -> Result<T, MizeErrorWhichImplementsError>;
 }
 
 pub trait IntoMizeResult<T, S> {
@@ -160,7 +163,9 @@ impl MizeError {
         self
     }
 
+
 }
+
 
 /*
 pub trait MizeResultExtension<T> {
@@ -231,6 +236,14 @@ impl <T> MizeResultTrait<T> for MizeResult<T> {
             },
         }
     }
+    fn as_std(self) -> Result<T, MizeErrorWhichImplementsError> {
+        match self {
+            Ok(val) => Ok(val),
+            Err(err) => {
+                Err(MizeErrorWhichImplementsError { inner: err })
+            },
+        }
+    }
 }
 
 impl<T, E, S> IntoMizeResult<T, S> for Result<T, E> where E: std::fmt::Display {
@@ -276,5 +289,34 @@ fn get_error_by_code(code: u32, caller_location: &std::panic::Location) -> MizeE
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MizeErrorWhichImplementsError {
+    inner: MizeError,
+}
+
+impl Display for MizeErrorWhichImplementsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MizeError envountered!");
+
+        if let Some(ref location) = self.inner.code_location {
+            write!(f, "[ {} ] {}", "LOCATION".yellow(), location);
+        };
+
+        write!(f, "[ {} ] {}", "BACKTRACE".yellow(), self.inner.backtrace);
+
+        for msg in &self.inner.messages {
+            write!(f,"[ {} ] {}", "MSG".yellow(), msg);
+        }
+        Ok(())
+    }
+}
+
+impl From<MizeError> for MizeErrorWhichImplementsError {
+    fn from(value: MizeError) -> Self {
+        MizeErrorWhichImplementsError { inner: value }
+    }
+}
+
+impl std::error::Error for MizeErrorWhichImplementsError {}
 
 
