@@ -230,7 +230,7 @@ in {
       };
 
 
-      default = (mizeLib.buildMizeForSystem system).devShell;
+      default = (mizeLib.buildMizeForSystem system).modules.mize.devShell;
     };
 
   }) // {
