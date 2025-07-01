@@ -1,2 +1,2 @@
 
-nix develop .#mizeFor.x86_64-linux.main.devShell --override-input nixpkgs github:NixOS/nixpkgs/ea6033ce4ddf2c0ede2ea147a450d4f880796128
+nix develop .#mizeFor.x86_64-linux-gnu.main.devShell --override-input nixpkgs github:NixOS/nixpkgs/ea6033ce4ddf2c0ede2ea147a450d4f880796128
