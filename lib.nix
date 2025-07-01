@@ -33,7 +33,7 @@ rec {
 
 
   # get a list of all modules
-  # aka folders with a mize_module.nix in them
+  # aka folders with a mize.nix in them
   module_list_drv = path: pkgs.stdenv.mkDerivation {
     name = "mize_module_list";
     dontUnpack = true;
@@ -42,7 +42,7 @@ rec {
       mkdir -p $out
       touch $out/modules_to_build
 
-      find ${path} -not -type d -name mize_module.nix | while read p; do
+      find ${path} -not -type d -name mize.nix | while read p; do
         (echo "$p" >> $out/modules_to_build; echo "found module $p")
       done
 
@@ -240,6 +240,7 @@ rec {
         inherit buildMizeForSystem mizeBuildConfig mizeBuildConfigStr;
         inherit mkSelString craneLib toolchain_version;
         inherit mkMizeModule mkMizeRustModule buildModule findModules hostSystem pkgsCross pkgsNative mkMizeRustShell;
+        inherit fenix;
         mize_version = "0.0.1";
       } // extraArgs );
 
