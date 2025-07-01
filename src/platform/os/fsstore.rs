@@ -2,8 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::fs::OpenOptions;
 use sysinfo::{System, Pid, ProcessRefreshKind, RefreshKind};
+use tracing::field::debug;
 use std::io::Write;
 use ciborium::Value as CborValue;
+use tracing::debug;
 
 use crate::instance::store::IdIter;
 use crate::item::IntoItemData;
@@ -13,7 +15,8 @@ use crate::error::{IntoMizeResult, MizeResult, MizeError};
 use crate::core::item::{ItemData, Item};
 use crate::core::id::MizeId;
 use crate::item::get_raw_from_cbor;
-use crate::instance::Instance;
+use crate::instance::{self, Instance};
+use tokio::net::UnixStream;
 
 #[derive(Clone, Debug)]
 pub struct FileStore {
@@ -29,6 +32,7 @@ impl FileStore {
         fs::create_dir_all(Path::new(&path).join("store"))?;
 
         // check for valid pid file
+        /*
         if let Some(pid) = valid_pid_file(path)? {
             // store already opened
             return Err(mize_err!("MizeStore at path {} is already opened by process with pid {}", path.display(), pid));
@@ -40,6 +44,7 @@ impl FileStore {
             let mut file = OpenOptions::new().write(true).create(true).open(path.join("pid"))?;
             write!(file, "{}", pid)?;
         }
+        */
 
         // init the store
         if !path.join("next_id").exists() {
@@ -49,9 +54,24 @@ impl FileStore {
         Ok(FileStore { path: Path::new(&path).to_owned() })
     }
 
-    pub fn store_is_opened(store_path: String) -> MizeResult<bool> {
-        let res = valid_pid_file(Path::new(&store_path))?.is_some();
-        Ok(res)
+    pub fn store_is_opened(store_path: String, instance: &mut Instance) -> MizeResult<bool> {
+
+        // this was the old method....
+        //let valid_pid_file = valid_pid_file(Path::new(&store_path))?.is_some();
+
+        let can_connect_to_sock = match instance.spawn_async_blocking("con_test_thread", try_connect_to_sock(store_path.clone())) {
+            Ok(_) => true,
+            Err(_) => false,
+        };
+        debug!("MiZe Store at {} opened: {}", store_path, can_connect_to_sock);
+        Ok(can_connect_to_sock)
+    }
+}
+
+async fn try_connect_to_sock(store_path: String) -> MizeResult<()> {
+    match UnixStream::connect(PathBuf::from(store_path).join("sock")).await {
+        Err(_) => Err(mize_err!("")),
+        Ok(_) => Ok(()),
     }
 }
 

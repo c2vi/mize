@@ -3,6 +3,7 @@
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::process::exit;
 use clap::builder::OsStr;
 use clap::{ArgAction, ArgMatches};
 use clap::{Arg, crate_version, Command};
@@ -80,6 +81,7 @@ fn main() {
 
     if let Err(err) = result {
         err.log();
+        exit(1);
     }
 }
 

@@ -100,7 +100,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         },
     };
 
-    if FileStore::store_is_opened(store_path.to_owned())? {
+    if FileStore::store_is_opened(store_path.to_owned(), instance)? {
         // if the store is already opened, connect to the instance, that opened it and join
         // it's namespace
 
@@ -114,7 +114,7 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
 
         #[cfg(target_family = "windows")]
         {
-            error!("CONNECTING... would connect, but that is not imon't identify as anything, to not cause anyone problems... So that everybody can be satisfied...plemented on windows yet");
+            error!("CONNECTING... would connect, but that is not implemented on windows yet");
         }
 
     } else {

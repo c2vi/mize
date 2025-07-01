@@ -1,3 +1,5 @@
+use core::result::Result::Err;
+use core::unimplemented;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -63,16 +65,8 @@ pub fn create(sub_matches: &ArgMatches) -> MizeResult<()> {
 
 pub fn is_running(sub_matches: &ArgMatches) -> MizeResult<()> {
 
-    let home_dir = env!("HOME");
-
-    if FileStore::store_is_opened(home_dir.to_owned() + "/.mize")? {
-        println!("true");
-    } else {
-        println!("false");
-    }
-
-    Ok(())
- 
+    println!("not implemented");
+    Err(mize_err!("not implemented"))
 }
 
 
