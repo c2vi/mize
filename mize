@@ -1,0 +1,18 @@
+#!/bin/sh
+#set -e
+
+# this is a Victorinix Wrapper
+source $($VIC_BINARY print-wrapper-path)
+
+BINARY=/home/me/work/mize/target/debug/mize
+
+function vic_build_func() {
+  nix develop ~/work/victorinix --impure -c cargo build --manifest-path ~/work/victorinix/Cargo.toml
+}
+
+vic_wrapper_run "$@"
+
+
+
+
+
