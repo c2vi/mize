@@ -42,6 +42,26 @@ pub mod msg_thread;
 pub mod module;
 
 
+// console_log macro
+// that can be copied into other files for debugging purposes
+#[cfg(feature = "wasm-target")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(feature = "wasm-target")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+#[cfg(feature = "wasm-target")]
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (unsafe { log(&format_args!($($t)*).to_string())})
+}
+
+
 
 
 #[cfg(test)]
@@ -150,10 +170,15 @@ impl Instance {
         //let msg_closure = move || msg_thread(op_rx, instance_clone);
         //instance.spawn("msg_thread", closure)?;
 
+        #[cfg(feature = "wasm-target")]
+        console_log!("before loading build time config");
 
         // load the config from build time
         let config = ItemData::from_toml(BUILD_TIME_CONFIG)?;
         instance.set_blocking("0", config);
+
+        #[cfg(feature = "wasm-target")]
+        console_log!("after loading build time config");
 
 
         return Ok(instance);
@@ -187,6 +212,8 @@ impl Instance {
         match self.get("0/config/load_modules")?.value_string() {
             Ok(modules_to_load) => {
                 for module in modules_to_load.split(" ") {
+                    #[cfg(feature = "wasm-target")]
+                    console_log!("loading module in Instance::init() ... {}", module);
                     self.load_module(module)?;
                 }
             },

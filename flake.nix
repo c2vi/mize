@@ -172,29 +172,11 @@ in {
       one = pkgs.stdenv.mkDerivation {
         name = "hiiiiiiii";
         nativeBuildInputs = [
-          (fenix.packages.${system}.combine [ wasmToolchain osToolchain winToolchain ])
-        ];
-        buildInputs = [
-          pkgs.pkgsCross.mingwW64.stdenv.cc.cc
-          pkgs.pkgsCross.mingwW64.windows.pthreads
-          (fenix.packages.${system}.combine [ wasmToolchain osToolchain winToolchain ])
-        ];
-        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
-          pkgs.pkgsCross.mingwW64.windows.pthreads
-        ];
-
-        RUSTFLAGS="-L ${pkgs.pkgsCross.mingwW64.windows.pthreads}/lib";
-        CARGO_BUILD_TARGET = "x86_64-pc-windows-gnu";
-
-
-        #fixes issues related to openssl
-        OPENSSL_DIR = "${pkgs.openssl.dev}";
-        OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
-        OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include/";
-
-        depsBuildBuild = with pkgs; [
-          pkgsCross.mingwW64.stdenv.cc
-          pkgsCross.mingwW64.windows.pthreads
+          (fenix.packages.${system}.combine [
+            fenix.packages.${system}.targets.wasm32-unknown-unknown.latest.toolchain
+            fenix.packages.${system}.latest.toolchain
+            fenix.packages.${system}.latest.rust-src
+          ])
         ];
       };
 

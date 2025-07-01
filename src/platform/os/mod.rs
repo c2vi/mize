@@ -81,12 +81,14 @@ pub fn os_instance_init(instance: &mut Instance) -> MizeResult<()> {
         },
         Err(e) => {
             // the default store_path: $HOME/.mize
-            let home_dir = env!("HOME");
-            if home_dir == "" {
-                return Err(mize_err!("env var $HOME empty"));
-            }
+            let home_dir = if let Some(dir) = std::env::home_dir() {
+                dir
+            } else {
+                return Err(mize_err!("could not get home_dir and store_path is not set in the config"));
+            };
 
-            let store_path = home_dir.to_owned() + "/.mize";
+            let store_path_buff = home_dir.join(".mize");
+            let store_path = store_path_buff.display().to_string();
 
             instance.set_blocking("self/config/store_path", store_path.clone().into_item_data())?;
 

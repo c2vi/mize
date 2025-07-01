@@ -269,6 +269,7 @@ rec {
     mkMizeRustShell = attrs: mkMizeModuleShell (attrs // {
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
+        pkgs.pkg-config
         (fenix.packages."x86_64-linux".combine [ 
           fenix.packages."x86_64-linux".stable.toolchain
           fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.stable.toolchain
@@ -289,12 +290,16 @@ rec {
         })
       ];
 
+    buildInputs = [
+      pkgsCross.openssl
+    ];
 
 
     });
 
     mkMizeModuleShell = attrs: pkgs.mkShell (attrs // {
       MIZE_BUILD_CONFIG = mizeBuildConfigStr;
+      IS_MIZE_DEV_SHELL = "true";
     });
 
 
