@@ -554,7 +554,7 @@ impl Instance {
 
 
     #[cfg(feature = "async")]
-    pub fn spawn_async<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) -> MizeResult<()> {
+    pub fn spawn_async<F: Future<Output = impl Send + 'static> + Send + 'static>(&mut self, name: &str, func: F) -> MizeResult<()> {
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 

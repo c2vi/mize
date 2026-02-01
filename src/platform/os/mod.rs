@@ -24,6 +24,7 @@ use crate::instance::module::EmptyModule;
 use self::fsstore::FileStore;
 
 pub mod fsstore;
+pub mod logging;
 
 #[cfg(target_family = "unix")]
 mod unix_socket;

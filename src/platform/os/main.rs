@@ -20,15 +20,13 @@ use tracing_subscriber::fmt::Subscriber;
 use tracing::Level;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::filter::EnvFilter;
-use crate::logging::init_logger;
+use mize::platform::os::logging::init_logger;
 
 use tracing::{trace, debug, info, warn, error};
 
 mod cli;
-mod logging;
 
 static APPNAME: &str = "mize";
-static DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::WARN;
 
 fn main() {
     // welcome to the mize source code

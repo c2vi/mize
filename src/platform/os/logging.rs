@@ -3,9 +3,6 @@ use std::path::PathBuf;
 use clap::{ArgAction, ArgMatches};
 use clap::{Arg, crate_version, Command};
 
-use mize::error::{MizeError, MizeResult};
-use mize::id::MizeId;
-use mize::item::ItemData;
 use tokio::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -22,16 +19,18 @@ use tracing_subscriber::fmt::format;
 use tracing::Event;
 use core::fmt;
 use tracing_subscriber::fmt::FormattedFields;
-
 use tracing::{trace, debug, info, warn, error};
-
-use crate::DEFAULT_LOG_LEVEL;
-
 use std::sync::atomic::AtomicUsize;
-
 use tracing::{field::Visit, Id, Subscriber};
 use tracing_core::Field;
 use std::fmt::Write;
+
+use crate::MizeError;
+use crate::MizeResult;
+use crate::id::MizeId;
+use crate::item::ItemData;
+
+static DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::WARN;
 
 pub fn init_logger(cli_matches: &ArgMatches) {
 

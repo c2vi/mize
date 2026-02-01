@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::fs::OpenOptions;
 use sysinfo::{System, Pid, ProcessRefreshKind, RefreshKind};
-use tracing::field::debug;
 use std::io::Write;
 use ciborium::Value as CborValue;
 use tracing::debug;
