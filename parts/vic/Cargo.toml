@@ -1,0 +1,51 @@
+cargo-features = ["edition2024"]
+
+[package]
+name = "victorinix"
+version = "0.1.0"
+edition = "2021"
+builder = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.1", features = ["cargo"] }
+colored = "2.1.0"
+env_logger = "0.11.3"
+flate2 = "1.0.30"
+json = "0.12.4"
+libelf = "0.1.0"
+log = "0.4.21"
+reqwest = { version = "0.12.4", features = ["blocking"] }
+serde = { version = "1.0.203", default-features = false }
+serde_json = "1.0.117"
+tar = "0.4.44"
+umask = "2.1.0"
+#mize = { git = "https://github.com/c2vi/mize", default-features = false }
+mize = { path = "/home/me/work/mize", default-features = false, features = ["os-target"] }
+
+# snix testing
+#snix-cli = { git = "https://git.snix.dev/snix/snix" }
+snix-tracing = { path = "./gitignore/snix/snix/tracing" }
+snix-cli = { path = "./gitignore/snix/snix/cli" }
+snix-store = { path = "./gitignore/snix/snix/store", features = [ "xp-composition-cli" ] }
+snix-castore = { path = "./gitignore/snix/snix/castore", features = ["xp-composition-cli", "xp-composition-url-refs" ] }
+snix-eval = { path = "./gitignore/snix/snix/eval" }
+snix-glue = { path = "./gitignore/snix/snix/glue" }
+snix-build = { path = "./gitignore/snix/snix/build" }
+nix-compat = { path = "./gitignore/snix/snix/nix-compat" }
+tokio = "1.45.0"
+tracing = "0.1.41"
+tracing-indicatif = "0.3.9"
+rnix = "0.11.0"
+oci-spec = "0.8.1"
+current_platform = "0.2.0"
+
+[build-dependencies]
+cc = "1.0"
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+# size without: 4.7MB, with: 4.4MB
+opt-level = "s"

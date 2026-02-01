@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# this is a Victorinix Wrapper
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+source $SCRIPT_DIR/wrapper/to-source.sh
+
+BINARY=/home/me/work/victorinix/target/debug/victorinix
+
+function vic_main() {
+  if [[ "$1" == "print-wrapper-path" ]]
+  then
+    SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+    echo -en $SCRIPT_DIR/wrapper/to-source.sh
+
+    VIC_NO_RUN=true
+    
+  fi
+}
+
+function vic_build_func() {
+  nix develop ~/work/victorinix --impure -c cargo build --manifest-path ~/work/victorinix/Cargo.toml
+}
+
+vic_wrapper_run "$@"
+
+
+
+
+
+
