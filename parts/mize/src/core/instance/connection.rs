@@ -1,12 +1,12 @@
-use flume::{Sender, Receiver};
-use tracing::{trace, debug, info, warn, error};
+use flume::{Receiver, Sender};
+use tracing::{debug, error, info, trace, warn};
 
+use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::id::Namespace;
 use crate::mize_err;
 use crate::proto::MizeMessage;
-use crate::error::{MizeError, MizeResult, IntoMizeResult};
 
-use super::Instance;
+use super::Mize;
 use crate::item::{get_raw_from_cbor, Item, ItemData};
 
 // only created with Instance::new_connection()
@@ -17,8 +17,8 @@ pub struct Connection {
     pub ns: Option<Namespace>,
 }
 
-pub trait ConnListener : Send + Sync {
-    fn listen(self, instance: Instance) -> MizeResult<()>;
+pub trait ConnListener: Send + Sync {
+    fn listen(self, instance: Mize) -> MizeResult<()>;
 }
 
 impl Connection {
@@ -39,7 +39,7 @@ pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<ItemData> {
     let id = item.id();
 
     let conn_id_str = id.nth_part(2)?;
-    let conn_id : u64 = conn_id_str.parse()?;
+    let conn_id: u64 = conn_id_str.parse()?;
     let tmp_path = id.path();
     let mut new_id_str = tmp_path.into_iter();
     let skipped = new_id_str.skip(4);
@@ -55,5 +55,3 @@ pub fn value_raw_from_peer(item: &mut Item) -> MizeResult<ItemData> {
 
     return Ok(data);
 }
-
-

@@ -1,11 +1,10 @@
-
-#![ allow( warnings ) ]
+#![allow(warnings)]
 
 static PROTO_VERSION: u8 = 1;
 
 #[macro_export]
 macro_rules! test_println {
-    ($($arg:tt)*) => { 
+    ($($arg:tt)*) => {
 
         #[cfg(test)]
         print!("[[ {} ]] ", <&str as colored::Colorize>::blue("TEST"));
@@ -20,7 +19,7 @@ macro_rules! test_println {
 
 #[macro_export]
 macro_rules! test_print {
-    ($($arg:tt)*) => { 
+    ($($arg:tt)*) => {
 
         #[cfg(test)]
         print!("[[ {} ]] ", <&str as colored::Colorize>::blue("TEST"));
@@ -32,20 +31,22 @@ macro_rules! test_print {
 
 // the core part has the code that can run on any platform
 mod core {
-    pub mod memstore;
+    pub mod config;
+    pub mod error;
+    pub mod id;
     pub mod instance;
     pub mod item;
-    pub mod id;
+    pub mod memstore;
     pub mod proto;
-    pub mod error;
     pub mod types;
 }
 
-pub use core::*;
-pub use core::instance::module::Module;
-pub use core::instance::Instance;
 pub use core::error::MizeError;
 pub use core::error::MizeResult;
+pub use core::instance::module::Module;
+pub use core::instance::Mize;
+pub use core::instance::MizePart;
+pub use core::*;
 use std::path::PathBuf;
 
 // platform specific stuff
@@ -67,7 +68,6 @@ pub mod platform {
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::instance_init;
 
-
         //////////// load_module
         #[cfg(feature = "os-target")]
         pub use super::os::load_module;
@@ -78,7 +78,6 @@ pub mod platform {
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::load_module;
 
-
         //////////// fetch_module
         #[cfg(feature = "os-target")]
         pub use super::os::fetch_module;
@@ -88,16 +87,19 @@ pub mod platform {
 
         #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
         pub use super::super::fetch_module;
-
     }
 }
 
+pub fn instance_init(instance: &mut core::instance::Mize) {}
 
-pub fn instance_init(instance: &mut core::instance::Instance) {}
+pub fn load_module(
+    instance: &mut core::instance::Mize,
+    name: &str,
+    path: Option<String>,
+) -> MizeResult<()> {
+    Ok(())
+}
 
-
-pub fn load_module(instance: &mut core::instance::Instance, name: &str, path: Option<String>) -> MizeResult<()> { Ok(()) }
-
-pub fn fetch_module(instance: &mut core::instance::Instance, name: &str) -> MizeResult<String> { Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned()) }
-
-
+pub fn fetch_module(instance: &mut core::instance::Mize, name: &str) -> MizeResult<String> {
+    Ok("oh noooooooooooooo, something went really really wrong, if this ends up in the executable....".to_owned())
+}

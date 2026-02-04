@@ -1,0 +1,8 @@
+[package]
+name = "ppc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mize = { path = "../../parts/mize" }
+js_part = { path = "../../parts/js" }

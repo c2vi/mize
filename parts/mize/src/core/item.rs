@@ -1,44 +1,43 @@
-use tracing::{debug, error, info, instrument, trace, warn, Instrument};
+use colored::Colorize;
+use core::fmt;
 use serde::Deserialize;
 use serde::Serialize;
-use core::fmt;
 use std::fmt::Debug;
-use std::{i128, string};
-use std::{collections::HashMap, path::PathBuf, io::Cursor, fmt::Display};
 use std::fs::File;
-use std::rc::Rc;
-use colored::Colorize;
 use std::io;
+use std::rc::Rc;
+use std::{collections::HashMap, fmt::Display, io::Cursor, path::PathBuf};
+use std::{i128, string};
+use tracing::{debug, error, info, instrument, trace, warn, Instrument};
 use tracing::{span, Level};
 
-use crate::error::{MizeError, MizeResult, IntoMizeResult};
-use crate::instance::{connection, Instance};
-use crate::instance::store::Store;
+use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::id::MizeId;
+use crate::instance::connection::value_raw_con_by_id;
+use crate::instance::store::Store;
+use crate::instance::{connection, Mize};
 use crate::mize_err;
 use crate::proto::MizeMessage;
 use ciborium::Value as CborValue;
-use crate::instance::connection::value_raw_con_by_id;
-
 
 // a item always has to do with a Instance, which takes care of how it is updated
 #[derive(Debug, Clone)]
 pub struct Item<'a> {
     id: MizeId,
-    pub instance: &'a Instance
+    pub instance: &'a Mize,
 }
 
 // without an Instance it is not an item, but only the "data of an item"
 // and this type for now is just an alias to CborValue
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ItemData ( pub CborValue );
+pub struct ItemData(pub CborValue);
 
 impl Item<'_> {
     pub fn id(&self) -> MizeId {
         self.id.clone()
     }
 
-    pub fn new(id: MizeId, instance: &Instance) -> Item {
+    pub fn new(id: MizeId, instance: &Mize) -> Item {
         Item { id, instance }
     }
 
@@ -57,31 +56,43 @@ impl Item<'_> {
     pub fn as_data_full(&self) -> MizeResult<ItemData> {
         let id = self.id();
 
-
         // the instance we are
         if id.store_part() == "self" {
             debug!("getting item '{}' from self", self.id());
 
             match id.nth_part(1)? {
-                "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
-                "namespace" => { 
+                "con_by_id" => {
+                    return value_raw_con_by_id(&mut self.clone());
+                }
+                "namespace" => {
                     let namespace_inner = self.instance.namespace.lock()?;
                     return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                },
+                }
                 "self_namespace" => {
                     let namespace_inner = self.instance.self_namespace.lock()?;
                     return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                },
+                }
                 "config" => {
-                    let rest_path = id.path.into_iter().skip(2).map(|v| v.to_owned()).collect::<Vec<String>>().join("/");
-                    let id_for_store = self.instance.new_id("0/config".to_owned() + "/" + rest_path.as_str())?;
+                    let rest_path = id
+                        .path
+                        .into_iter()
+                        .skip(2)
+                        .map(|v| v.to_owned())
+                        .collect::<Vec<String>>()
+                        .join("/");
+                    let id_for_store = self
+                        .instance
+                        .new_id("0/config".to_owned() + "/" + rest_path.as_str())?;
                     let store = self.instance.store.lock()?;
                     let data = store.get_value_data_full(id_for_store)?;
                     return Ok(data);
                 }
-                _ => {},
+                _ => {}
             }
-            return Err(mize_err!("a /self path, but the next element in the path '{:?}' is not valid", id.nth_part(1)));
+            return Err(mize_err!(
+                "a /self path, but the next element in the path '{:?}' is not valid",
+                id.nth_part(1)
+            ));
         }
 
         let self_namespace_inner = self.instance.self_namespace.lock()?;
@@ -91,27 +102,31 @@ impl Item<'_> {
 
             if id.store_part() == "inst" {
                 match id.nth_part(1)? {
-                    "con_by_id" => { return value_raw_con_by_id(&mut self.clone()); },
-                    "namespace" => { 
+                    "con_by_id" => {
+                        return value_raw_con_by_id(&mut self.clone());
+                    }
+                    "namespace" => {
                         let namespace_inner = self.instance.namespace.lock()?;
                         return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                    },
-                    "self_namespace" => { 
+                    }
+                    "self_namespace" => {
                         let namespace_inner = self.instance.self_namespace.lock()?;
                         return Ok(ItemData::from_string(namespace_inner.as_real_string()));
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
 
             let store_inner = self.instance.store.lock()?;
             return store_inner.get_value_data_full(self.id());
-
-
         } else {
             let mut connection = self.instance.get_connection_by_ns(self.id().namespace())?;
 
-            debug!("getting item '{}' from connection '{}' from store", self.id(), connection.id);
+            debug!(
+                "getting item '{}' from connection '{}' from store",
+                self.id(),
+                connection.id
+            );
 
             let msg = MizeMessage::new_get(self.id(), connection.id);
             connection.send(msg);
@@ -121,8 +136,7 @@ impl Item<'_> {
     }
 
     #[instrument(name = "fn.ItemData::merge")]
-    pub fn merge<V: Into<ItemData> + Debug >(&mut self, mut value: V) -> MizeResult<()> {
-
+    pub fn merge<V: Into<ItemData> + Debug>(&mut self, mut value: V) -> MizeResult<()> {
         let mut data = self.as_data_full()?;
         //let mut data = data_full.get_path(id_path_without_store_part)?;
         trace!("item::merge data: {:?}", data);
@@ -135,25 +149,28 @@ impl Item<'_> {
 
         // handle the case of /self/*
         if self.id().store_part() == "self" {
-            let rest_path = self.id().path.into_iter().skip(1).map(|v| v.to_owned()).collect::<Vec<String>>().join("/");
-            let id_for_store = self.instance.new_id("0".to_owned() + "/" + rest_path.as_str())?;
+            let rest_path = self
+                .id()
+                .path
+                .into_iter()
+                .skip(1)
+                .map(|v| v.to_owned())
+                .collect::<Vec<String>>()
+                .join("/");
+            let id_for_store = self
+                .instance
+                .new_id("0".to_owned() + "/" + rest_path.as_str())?;
 
             let store_inner = self.instance.store.lock()?;
             store_inner.set(id_for_store, data)?;
-
-
         } else if self.instance.we_are_namespace()? {
-
             let store_inner = self.instance.store.lock()?;
             store_inner.set(self.id(), data)?;
-
         } else {
-
             let namespace = self.id().namespace();
             let mut connection = self.instance.get_connection_by_ns(namespace)?;
             let msg = MizeMessage::new_update_request(self.id(), data, connection.id);
             connection.send(msg)?;
-
         }
 
         Ok(())
@@ -178,11 +195,12 @@ impl ItemData {
     }
 
     pub fn from_toml(toml_string: &str) -> MizeResult<ItemData> {
-
         let toml_deserializer = toml::Deserializer::new(&toml_string);
 
-        let value = CborValue::deserialize(toml_deserializer)
-            .mize_result_msg(format!("Could not deserialize the toml string: {}", &toml_string))?;
+        let value = CborValue::deserialize(toml_deserializer).mize_result_msg(format!(
+            "Could not deserialize the toml string: {}",
+            &toml_string
+        ))?;
 
         return Ok(value.into_item_data());
     }
@@ -197,14 +215,14 @@ impl ItemData {
     pub fn from_string<S: Into<String>>(into_string: S) -> ItemData {
         let string = into_string.into();
         let data = CborValue::Text(string);
-        return ItemData (data);
+        return ItemData(data);
     }
 
     pub fn to_json(self) -> MizeResult<String> {
-
         let mut result: Vec<u8> = Vec::new();
 
-        self.0.serialize(&mut serde_json::Serializer::new(&mut result))?;
+        self.0
+            .serialize(&mut serde_json::Serializer::new(&mut result))?;
 
         Ok(String::from_utf8(result)?)
     }
@@ -212,8 +230,10 @@ impl ItemData {
     pub fn from_json(json_str: String) -> MizeResult<ItemData> {
         let mut json_deserializer = serde_json::Deserializer::from_str(json_str.as_str());
 
-        let value = CborValue::deserialize(&mut json_deserializer)
-            .mize_result_msg(format!("could not deserialize the json string: {}", json_str))?;
+        let value = CborValue::deserialize(&mut json_deserializer).mize_result_msg(format!(
+            "could not deserialize the json string: {}",
+            json_str
+        ))?;
 
         return Ok(value.into_item_data());
     }
@@ -227,7 +247,7 @@ impl ItemData {
     }
 
     pub fn from_cbor(cbor: CborValue) -> ItemData {
-        ItemData (cbor)
+        ItemData(cbor)
     }
 
     pub fn sort_keys(&mut self) -> MizeResult<()> {
@@ -247,7 +267,7 @@ impl ItemData {
             return CborValue::Bool(true).into_item_data();
         }
         if let Ok(int) = value_str.parse::<i128>() {
-            return int.into_item_data()
+            return int.into_item_data();
         }
         return CborValue::Text(value_str).into_item_data();
     }
@@ -262,11 +282,11 @@ impl ItemData {
 
     pub fn get_path<P: IntoPath>(&self, path: P) -> MizeResult<ItemData> {
         let path = path.into_path();
-        Ok(item_data_get_path(&self.0, path)?.to_owned().into_item_data())
+        Ok(item_data_get_path(&self.0, path)?
+            .to_owned()
+            .into_item_data())
     }
-
 }
-
 
 impl Default for ItemData {
     fn default() -> Self {
@@ -275,7 +295,6 @@ impl Default for ItemData {
 }
 
 pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
-
     let mut data = ItemData::new();
 
     // in case it's just a string
@@ -290,15 +309,25 @@ pub fn data_from_string(data_string: String) -> MizeResult<ItemData> {
             continue;
         }
 
-        let path = option.split("=").nth(0)
-            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty path (thing before =)", option)))?;
+        let path = option
+            .split("=")
+            .nth(0)
+            .ok_or(MizeError::new().msg(format!(
+                "Failed to parse Option: option '{}' has an empty path (thing before =)",
+                option
+            )))?;
 
         //trace!("data_from_string: path: {}", path);
 
-        let value = option.split("=").nth(1)
-            .ok_or(MizeError::new().msg(format!("Failed to parse Option: option '{}' has an empty value (thing after =)", option)))?;
+        let value = option
+            .split("=")
+            .nth(1)
+            .ok_or(MizeError::new().msg(format!(
+                "Failed to parse Option: option '{}' has an empty value (thing after =)",
+                option
+            )))?;
         //trace!("data_from_string: value: {}", value);
-        
+
         let mut path_vec = Vec::new();
         path_vec.extend(path.split("."));
 
@@ -333,18 +362,20 @@ pub fn item_data_get_path(data: &CborValue, path: Vec<String>) -> MizeResult<&Cb
                     }
                 }
             }
-        },
+        }
         val => {
             return Err(MizeError::new()
-                .msg(format!("Failed to get path '{:?}' from ItemData, the data at '{}' is not a map", path, path_el))
+                .msg(format!(
+                    "Failed to get path '{:?}' from ItemData, the data at '{}' is not a map",
+                    path, path_el
+                ))
                 .msg(format!("{:?} is: {:?}", path_el, val)));
-        },
+        }
     };
     item_data_get_path(sub_data, path_iter.collect())
 }
 
 pub fn item_data_sort_keys(data: &mut CborValue) -> MizeResult<()> {
-
     // for a list, sort each item of the list
     if data.is_array() {
         for el in data.as_array_mut().unwrap().iter_mut() {
@@ -356,7 +387,7 @@ pub fn item_data_sort_keys(data: &mut CborValue) -> MizeResult<()> {
     if data.is_map() {
         let map: &mut Vec<(CborValue, CborValue)> = data.as_map_mut().unwrap();
         //map.sort_by_key(|el| el.0);
-        map.sort_by(|a,b| {
+        map.sort_by(|a, b| {
             match a.0.partial_cmp(&b.0) {
                 Some(val) => val,
                 None => {
@@ -375,7 +406,11 @@ pub fn item_data_sort_keys(data: &mut CborValue) -> MizeResult<()> {
     Ok(())
 }
 
-pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: &CborValue) -> MizeResult<()> {
+pub fn item_data_set_path(
+    data: &mut CborValue,
+    path: Vec<String>,
+    data_to_set: &CborValue,
+) -> MizeResult<()> {
     //trace!("[ {} ] item_data_set_path()", "CALL".yellow());
     //trace!("[ {} ] data: {}", "ARG".yellow(), data.clone().into_item_data());
     //trace!("[ {} ] path: {:?}", "ARG".yellow(), path);
@@ -395,11 +430,11 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
             // our base case
             *data = data_to_set.to_owned();
             return Ok(());
-        },
+        }
     };
     match data {
         CborValue::Map(ref mut map) => {
-            for (key, val) in &mut * map {
+            for (key, val) in &mut *map {
                 if let CborValue::Text(key_str) = key {
                     if key_str == &path_el {
                         //trace!("item_data_set_path: setting key {key_str} in map with recursive call");
@@ -417,7 +452,7 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
             item_data_set_path(&mut inner_value, path_iter.collect(), data_to_set);
             map.push((CborValue::Text(path_el.clone()), inner_value));
             return Ok(());
-        },
+        }
         CborValue::Null => {
             //trace!("item_data_set_path: CborValue::Null case");
             let mut inner_value = CborValue::Null;
@@ -427,18 +462,21 @@ pub fn item_data_set_path(data: &mut CborValue, path: Vec<String>, data_to_set: 
             *data = CborValue::Map(map_vec);
 
             return Ok(());
-        },
+        }
         val => {
             return Err(MizeError::new()
-                .msg(format!("Failed to get path '{:?}' from ItemData, the data at '{}' is not a map", path, path_el))
+                .msg(format!(
+                    "Failed to get path '{:?}' from ItemData, the data at '{}' is not a map",
+                    path, path_el
+                ))
                 .msg(format!("{:?} is: {:?}", path_el, val)));
-        },
+        }
     };
 
     return Err(MizeError::new().msg("unreachable"));
 }
 
-pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
+pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue) {
     // needs to be recursive
 
     match (merge_into, other) {
@@ -447,25 +485,24 @@ pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
         (CborValue::Map(ref mut merge_into_map), CborValue::Map(ref other_map)) => {
             // go through other_map and merge those keys/values to merge_into
             for (other_key, other_val) in other_map {
-
                 // so find that same vale in merge_into, if exists recursively merge, else just add to
                 // vec
                 let mut found_value = CborValue::Null;
                 let mut value_found = false;
                 let mut new_value_for_merge_into: Vec<(CborValue, CborValue)> = Vec::new(); // here we collect the
-                                                                           // new contents of the
-                                                                           // map, to assign later
-                                                                           // to merge_into_map
+                                                                                            // new contents of the
+                                                                                            // map, to assign later
+                                                                                            // to merge_into_map
 
                 for (merge_into_key, merge_into_val) in merge_into_map.clone() {
                     if merge_into_key == *other_key {
                         value_found = true;
                         found_value = merge_into_val.to_owned();
                         // if we found it, also don't add it to new_value_for_merge_into
-
                     } else {
                         //if not found push to new_value_for_merge_into
-                        new_value_for_merge_into.push((merge_into_key.to_owned(), merge_into_val.to_owned()));
+                        new_value_for_merge_into
+                            .push((merge_into_key.to_owned(), merge_into_val.to_owned()));
                     }
                 }
 
@@ -475,7 +512,6 @@ pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
 
                     // to asign push to new_value_for_merge_into, because the old was removed already
                     new_value_for_merge_into.push((other_key.to_owned(), found_value));
-
                 } else {
                     // if not found, just add the other_key/val to new_value_for_merge_into
                     new_value_for_merge_into.push((other_key.to_owned(), other_val.to_owned()));
@@ -488,8 +524,7 @@ pub fn item_data_merge(merge_into: &mut CborValue, other: &CborValue){
 
         // if other is Null, don't asign
         // this is gonna have repercussions.... because it's not clean behaviour
-        (merge_into, CborValue::Null) => {
-        }
+        (merge_into, CborValue::Null) => {}
 
         // in any other case we just want to set merge_into to other
         // also this is the base case
@@ -513,27 +548,30 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
                 CborValue::Bytes(vec) => {
                     trace!("[ {} ] ret value: {:?}", "RET".yellow(), &vec[..]);
                     return Ok(&vec[..]);
-                },
-                CborValue::Text(string) => { 
+                }
+                CborValue::Text(string) => {
                     trace!("[ {} ] ret value: {:?}", "RET".yellow(), string.as_bytes());
                     return Ok(string.as_bytes());
-                },
+                }
                 other => {
-                    return Err(mize_err!("path is empty and the value: '{:?}' is neither Bytes nor Text", other));
-                },
+                    return Err(mize_err!(
+                        "path is empty and the value: '{:?}' is neither Bytes nor Text",
+                        other
+                    ));
+                }
             };
-        }, 
+        }
     };
-    
+
     match value {
         CborValue::Bytes(vec) => {
             trace!("[ {} ] ret value: {:?}", "RET".yellow(), &vec[..]);
             return Ok(&vec[..]);
-        },
-        CborValue::Text(string) => { 
+        }
+        CborValue::Text(string) => {
             trace!("[ {} ] ret value: {:?}", "RET".yellow(), string.as_bytes());
             return Ok(string.as_bytes());
-        },
+        }
         CborValue::Map(map) => {
             let mut inner_val: &CborValue = &CborValue::Null;
             let mut inner_val_found = false;
@@ -547,12 +585,19 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
                     }
                 }
             }
-            
+
             // if there is no value at that path
             if inner_val_found == false {
                 return Err(MizeError::new()
                     // jesus christ, this is a pfusch...
-                    .msg(format!("get_raw_from_cbor: Path '{}' not Found", path.clone().into_iter().map(|v| v.to_owned()).collect::<Vec<String>>().join("/"))))
+                    .msg(format!(
+                        "get_raw_from_cbor: Path '{}' not Found",
+                        path.clone()
+                            .into_iter()
+                            .map(|v| v.to_owned())
+                            .collect::<Vec<String>>()
+                            .join("/")
+                    )));
             }
 
             //path_iter.next();
@@ -560,9 +605,11 @@ pub fn get_raw_from_cbor<'a>(value: &'a CborValue, path: Vec<&String>) -> MizeRe
             let ret_value = get_raw_from_cbor(inner_val, inner_path);
             trace!("[ {} ] ret value: {:?}", "RET".yellow(), ret_value);
             return ret_value;
-        },
-        _ => Err(MizeError::new()
-            .msg(format!("get_raw_from_cbor: value is not a map, text or bytes ... value: {:?}", value))),
+        }
+        _ => Err(MizeError::new().msg(format!(
+            "get_raw_from_cbor: value is not a map, text or bytes ... value: {:?}",
+            value
+        ))),
     }
 }
 
@@ -613,7 +660,7 @@ impl IntoItemData for &String {
 }
 impl IntoItemData for CborValue {
     fn into_item_data(self) -> ItemData {
-        ItemData ( self )
+        ItemData(self)
     }
 }
 impl IntoItemData for ItemData {
@@ -630,8 +677,9 @@ impl IntoItemData for i128 {
 impl fmt::Display for ItemData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ItemData: ");
-        let display_writer = DisplayWriter (f);
-        self.0.serialize(&mut serde_json::Serializer::pretty(display_writer))
+        let display_writer = DisplayWriter(f);
+        self.0
+            .serialize(&mut serde_json::Serializer::pretty(display_writer))
             .map_err(|serde_err| std::fmt::Error)
     }
 }
@@ -641,13 +689,15 @@ struct DisplayWriter<'a, 'b>(&'a mut fmt::Formatter<'b>);
 
 impl<'a, 'b> io::Write for DisplayWriter<'a, 'b> {
     fn write(&mut self, bytes: &[u8]) -> std::result::Result<usize, std::io::Error> {
-        
-        self.0.write_str(&String::from_utf8_lossy(bytes))
+        self.0
+            .write_str(&String::from_utf8_lossy(bytes))
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
 
         Ok(bytes.len())
     }
-    fn flush(&mut self) -> std::result::Result<(), std::io::Error> { todo!() }
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+        todo!()
+    }
 }
 
 impl PartialEq for ItemData {
@@ -662,5 +712,3 @@ impl PartialEq for ItemData {
     }
 }
 impl Eq for ItemData {}
-
-

@@ -1,19 +1,19 @@
+use dyn_clone::DynClone;
 use std::fmt::Debug;
 use std::iter::Map;
 use std::option::Iter;
-use dyn_clone::DynClone;
 
 use crate::error::MizeResult;
-use crate::item::{Item, ItemData};
 use crate::id::MizeId;
-use crate::memstore::MemStore;
-use crate::instance::Instance;
+use crate::instance::Mize;
 use crate::item::get_raw_from_cbor;
+use crate::item::{Item, ItemData};
+use crate::memstore::MemStore;
 
 dyn_clone::clone_trait_object!(Store);
 
 pub trait Store: DynClone + Send + Sync + Debug {
-    // should have the ability to be multi threaded, if the underlying implementation supports 
+    // should have the ability to be multi threaded, if the underlying implementation supports
     // multithreaded IO operations
     // for now all refs to a store hold a Mutex but this mutex is part of where the MizeStore trait
     // is implemented, so that there can be a multithreaded implementation
@@ -48,7 +48,10 @@ pub struct IdIter {
 
 impl IdIter {
     pub fn new(store: Box<dyn Store>) -> MizeResult<IdIter> {
-        Ok(IdIter { cur_id: store.first_id()?, store })
+        Ok(IdIter {
+            cur_id: store.first_id()?,
+            store,
+        })
     }
 }
 
@@ -57,17 +60,12 @@ impl Iterator for IdIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.store.next_id(&self.cur_id) {
-            Err(err) => {
-                Some(Err(err))
-            },
+            Err(err) => Some(Err(err)),
             Ok(Some(new_id)) => {
                 self.cur_id = new_id.clone();
                 Some(Ok(new_id))
-            },
-            Ok(None) => {
-                None
-            },
+            }
+            Ok(None) => None,
         }
     }
 }
-

@@ -1,16 +1,15 @@
+use colored::Colorize;
 use core::result::Result;
 use core::result::Result::Ok;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::fmt::format;
-use std::string::FromUtf8Error;
 use std::io;
-use colored::Colorize;
-use tracing::{trace, debug, info, warn, error};
+use std::string::FromUtf8Error;
+use tracing::{debug, error, info, trace, warn};
 
-use crate::proto::MizeMessage;
-
+//use crate::proto::MizeMessage;
 
 #[macro_export]
 macro_rules! mize_err {
@@ -26,7 +25,9 @@ pub trait MizeResultTrait<T> {
 
 pub trait IntoMizeResult<T, S> {
     fn mize_result(self) -> MizeResult<T>;
-    fn mize_result_msg(self, msg: S) -> MizeResult<T> where S: std::fmt::Display ;
+    fn mize_result_msg(self, msg: S) -> MizeResult<T>
+    where
+        S: std::fmt::Display;
 }
 
 #[derive(Debug, Clone)]
@@ -34,16 +35,18 @@ pub struct MizeError {
     pub category: Vec<String>,
     pub code: u32,
     pub messages: Vec<String>,
-    pub caused_by_msg: Option<CausedByMessage>,
+    //pub caused_by_msg: Option<CausedByMessage>,
     pub code_location: Option<MizeCodeLocation>,
     pub backtrace: String,
 }
 
+/*
 #[derive(Debug, Clone)]
 pub struct CausedByMessage {
     // peer: &Connection, // TODO: add later
     msg: Box<MizeMessage>,
 }
+*/
 
 #[derive(Debug, Clone)]
 pub struct MizeCodeLocation {
@@ -54,16 +57,20 @@ pub struct MizeCodeLocation {
 
 impl Display for MizeCodeLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "file: {} line: {} column: {}", self.file, self.line, self.column)
+        write!(
+            f,
+            "file: {} line: {} column: {}",
+            self.file, self.line, self.column
+        )
     }
 }
 
-impl From<&std::panic::Location <'_>> for MizeCodeLocation {
+impl From<&std::panic::Location<'_>> for MizeCodeLocation {
     fn from(panic_location: &std::panic::Location) -> MizeCodeLocation {
         let file = panic_location.file().to_string();
         let line = panic_location.line();
         let column = panic_location.column();
-        MizeCodeLocation {file, line, column}
+        MizeCodeLocation { file, line, column }
     }
 }
 
@@ -88,25 +95,28 @@ impl MizeError {
             category: Vec::new(),
             code: 0,
             messages: Vec::new(),
-            caused_by_msg: None,
             code_location: Some(caller_location.into()),
             backtrace: format!("{}", std::backtrace::Backtrace::capture()),
-        }
+        };
     }
 
-    pub fn msg<E>(mut self, msg: E) -> MizeError 
-        where E: std::fmt::Display
+    pub fn msg<E>(mut self, msg: E) -> MizeError
+    where
+        E: std::fmt::Display,
     {
         self.messages.push(format!("{}", msg));
         return self;
     }
 
-    pub fn category<T>(mut self, category: T) -> MizeError where T: Into<String> {
+    pub fn category<T>(mut self, category: T) -> MizeError
+    where
+        T: Into<String>,
+    {
         self.category.push(category.into());
         return self;
     }
-    
-    fn send(self) -> MizeError{
+
+    fn send(self) -> MizeError {
         self
     }
 
@@ -134,15 +144,20 @@ impl MizeError {
         return self.send().add_to_err_item().log();
     }
 
-    pub fn critical(self){
+    pub fn critical(self) {
         let mut msg_iter = self.messages.iter();
         match msg_iter.next() {
             None => {
                 error!("{} MizeError with code: {}", "CRITICAL".red(), self.code);
-            },
+            }
             Some(msg) => {
-                error!("{} MizeError with code: {} - {}", "CRITICAL".red(), self.code, msg);
-            },
+                error!(
+                    "{} MizeError with code: {} - {}",
+                    "CRITICAL".red(),
+                    self.code,
+                    msg
+                );
+            }
         }
         for msg in msg_iter {
             error!("{} {}", "MSG".red(), msg)
@@ -150,22 +165,15 @@ impl MizeError {
         if let Some(location) = self.code_location {
             error!("{} {}", "LOCATION".red(), location)
         }
-        if let Some(caused_by_msg) = self.caused_by_msg {
-            error!("{} {:?}", "CAUSED_BY_MESSAGE".red(), caused_by_msg)
-        }
         panic!();
     }
 
     pub fn location(mut self, location: MizeCodeLocation) -> MizeError {
-
         self.code_location = Some(location);
 
         self
     }
-
-
 }
-
 
 /*
 pub trait MizeResultExtension<T> {
@@ -221,70 +229,90 @@ impl<T: Display> From<T> for MizeError {
     fn from(value: T) -> Self {
         let caller_location = std::panic::Location::caller();
         MizeError::new()
-            .msg(format!("From {}: {}", std::any::type_name_of_val(&value), value))
+            .msg(format!(
+                "From {}: {}",
+                std::any::type_name_of_val(&value),
+                value
+            ))
             .location(caller_location.into())
     }
 }
 
-impl <T> MizeResultTrait<T> for MizeResult<T> {
+impl<T> MizeResultTrait<T> for MizeResult<T> {
     fn critical(self) -> T {
         match self {
             Ok(val) => val,
             Err(err) => {
                 err.critical();
                 unreachable!()
-            },
+            }
         }
     }
     fn as_std(self) -> Result<T, MizeErrorWhichImplementsError> {
         match self {
             Ok(val) => Ok(val),
-            Err(err) => {
-                Err(MizeErrorWhichImplementsError { inner: err })
-            },
+            Err(err) => Err(MizeErrorWhichImplementsError { inner: err }),
         }
     }
 }
 
-impl<T, E, S> IntoMizeResult<T, S> for Result<T, E> where E: std::fmt::Display {
+impl<T, E, S> IntoMizeResult<T, S> for Result<T, E>
+where
+    E: std::fmt::Display,
+{
     #[track_caller]
     fn mize_result(self) -> MizeResult<T> {
         let caller_location = std::panic::Location::caller();
 
         match self {
             Ok(val) => MizeResult::Ok(val),
-            Err(err) => MizeResult::Err(MizeError::new()
-                .category("misc")
-                .msg(format!("From {}: {}", std::any::type_name_of_val(&err), err))),
+            Err(err) => MizeResult::Err(MizeError::new().category("misc").msg(format!(
+                "From {}: {}",
+                std::any::type_name_of_val(&err),
+                err
+            ))),
         }
     }
     #[track_caller]
-    fn mize_result_msg(self, msg: S) -> MizeResult<T> where S: std::fmt::Display {
+    fn mize_result_msg(self, msg: S) -> MizeResult<T>
+    where
+        S: std::fmt::Display,
+    {
         let caller_location = std::panic::Location::caller();
         match self {
             Ok(val) => MizeResult::Ok(val),
-            Err(err) => MizeResult::Err(MizeError::new()
-                .category("misc")
-                .msg(format!("{}", msg))
-                .msg(format!("From {}: {}", std::any::type_name_of_val(&err), err))),
+            Err(err) => MizeResult::Err(
+                MizeError::new()
+                    .category("misc")
+                    .msg(format!("{}", msg))
+                    .msg(format!(
+                        "From {}: {}",
+                        std::any::type_name_of_val(&err),
+                        err
+                    )),
+            ),
         }
     }
 }
-
 
 fn get_error_by_code(code: u32, caller_location: &std::panic::Location) -> MizeError {
     let err = MizeError {
         category: Vec::new(),
         code: 0,
         messages: Vec::new(),
-        caused_by_msg: None,
         code_location: Some(caller_location.into()),
         backtrace: format!("{}", std::backtrace::Backtrace::capture()),
     };
 
     match code {
-        109 => err.set_code(109).category("decoding").msg("conversion from utf8 failed"),
-        108 => err.set_code(108).category("decoding").msg("serde deserialisation failed"),
+        109 => err
+            .set_code(109)
+            .category("decoding")
+            .msg("conversion from utf8 failed"),
+        108 => err
+            .set_code(108)
+            .category("decoding")
+            .msg("serde deserialisation failed"),
         _ => err,
     }
 }
@@ -305,7 +333,7 @@ impl Display for MizeErrorWhichImplementsError {
         write!(f, "[ {} ] {}", "BACKTRACE".yellow(), self.inner.backtrace);
 
         for msg in &self.inner.messages {
-            write!(f,"[ {} ] {}", "MSG".yellow(), msg);
+            write!(f, "[ {} ] {}", "MSG".yellow(), msg);
         }
         Ok(())
     }
@@ -318,5 +346,3 @@ impl From<MizeError> for MizeErrorWhichImplementsError {
 }
 
 impl std::error::Error for MizeErrorWhichImplementsError {}
-
-

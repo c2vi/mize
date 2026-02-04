@@ -1,28 +1,27 @@
+#![allow(warnings)]
 
-#![ allow( warnings ) ]
-
+use clap::builder::OsStr;
+use clap::{crate_version, Arg, Command};
+use clap::{ArgAction, ArgMatches};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::exit;
-use clap::builder::OsStr;
-use clap::{ArgAction, ArgMatches};
-use clap::{Arg, crate_version, Command};
 
-use mize::error::{MizeError, MizeResult};
-use mize::{instance, Instance};
-use mize::item::ItemData;
-use tokio::sync::{Mutex, mpsc};
-use std::sync::Arc;
-use std::io::Write;
 use colored::Colorize;
-use std::env;
-use tracing_subscriber::fmt::Subscriber;
-use tracing::Level;
-use tracing::level_filters::LevelFilter;
-use tracing_subscriber::filter::EnvFilter;
+use mize::error::{MizeError, MizeResult};
+use mize::item::ItemData;
 use mize::platform::os::logging::init_logger;
+use mize::{instance, Mize};
+use std::env;
+use std::io::Write;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
+use tracing::level_filters::LevelFilter;
+use tracing::Level;
+use tracing_subscriber::filter::EnvFilter;
+use tracing_subscriber::fmt::Subscriber;
 
-use tracing::{trace, debug, info, warn, error};
+use tracing::{debug, error, info, trace, warn};
 
 mod cli;
 
@@ -74,7 +73,8 @@ fn main() {
         // some unknown command passed
         Some((cmd, sub_matches)) => cli::run_from_module(cmd, sub_matches),
 
-        None => Err(MizeError::new().msg("No subcommand was passed. use --help to list availavle comamnds.")),
+        None => Err(MizeError::new()
+            .msg("No subcommand was passed. use --help to list availavle comamnds.")),
     };
 
     if let Err(err) = result {
@@ -83,105 +83,83 @@ fn main() {
     }
 }
 
-
-
-
 fn cli_matches() -> clap::ArgMatches {
-
-
     let main = Command::new(APPNAME)
         .version(crate_version!())
         .author("Sebastian Moser")
         .about("The MiZe Command line tool")
         .allow_external_subcommands(true)
-        .arg(Arg::new("verbose")
-            .long("verbose")
-            .short('v')
-            .action(ArgAction::Count)
-            .global(true)
+        .arg(
+            Arg::new("verbose")
+                .long("verbose")
+                .short('v')
+                .action(ArgAction::Count)
+                .global(true),
         )
-        .arg(Arg::new("log-level")
-            .long("log-level")
-            .value_name("LOGLEVEL")
-            .help("set the log-level to one of OFF, ERROR, WARN, INFO, DEBUG, TRACE")
-            .global(true)
+        .arg(
+            Arg::new("log-level")
+                .long("log-level")
+                .value_name("LOGLEVEL")
+                .help("set the log-level to one of OFF, ERROR, WARN, INFO, DEBUG, TRACE")
+                .global(true),
         )
-        .arg(Arg::new("silent")
-            .long("silent")
-            .action(ArgAction::SetTrue)
-            .help("set the log-level to OFF")
-            .global(true)
+        .arg(
+            Arg::new("silent")
+                .long("silent")
+                .action(ArgAction::SetTrue)
+                .help("set the log-level to OFF")
+                .global(true),
         )
-        .arg(Arg::new("folder")
-            .short('f')
-            .long("folder")
-            .help("The folder the Instance stores all it's data and the socket for connections")
-            .global(true)
+        .arg(
+            Arg::new("folder")
+                .short('f')
+                .long("folder")
+                .help("The folder the Instance stores all it's data and the socket for connections")
+                .global(true),
         )
-        .arg(Arg::new("config")
-            .short('c')
-            .long("config")
-            .help("overwrite config options")
-            .global(true)
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .help("overwrite config options")
+                .global(true),
         )
-        .arg(Arg::new("config-file")
-            .long("config-file")
-            .help("specify a config file")
-            .global(true)
+        .arg(
+            Arg::new("config-file")
+                .long("config-file")
+                .help("specify a config file")
+                .global(true),
         )
         .subcommand(
-                Command::new("run")
+            Command::new("run")
                 .aliases(["r"])
-                .about("Run a MiZe Instance")
-            )
-        .subcommand(Command::new("stop")
-                .about("Stop a MiZe Instance")
-            )
+                .about("Run a MiZe Instance"),
+        )
+        .subcommand(Command::new("stop").about("Stop a MiZe Instance"))
+        .subcommand(Command::new("mount").aliases(["m"]))
         .subcommand(
-                Command::new("mount")
-                .aliases(["m"])
-            )
-        .subcommand(
-                Command::new("get")
+            Command::new("get")
                 .aliases(["g"])
                 .arg(Arg::new("id").help("The id or path to get"))
-            .arg(Arg::new("recurse")
-                .short('r')
-                .action(ArgAction::Count)
-                )
-            )
+                .arg(Arg::new("recurse").short('r').action(ArgAction::Count)),
+        )
         .subcommand(
-                Command::new("set")
+            Command::new("set")
                 .aliases(["s"])
                 .arg(Arg::new("id").help("The id or path to set"))
-                .arg(Arg::new("value").help("The value to set the path to"))
-            )
+                .arg(Arg::new("value").help("The value to set the path to")),
+        )
         .subcommand(
-                Command::new("show")
+            Command::new("show")
                 .aliases(["so"])
-                .arg(Arg::new("id").help("The id or path to sub to and show"))
-            )
-        .subcommand(
-                Command::new("call")
-                .aliases(["c"])
-            )
-        .subcommand(
-                Command::new("create")
-                .aliases(["cr"])
-            )
-        .subcommand(
-                Command::new("is-running")
-                .aliases(["isr"])
-            )
-        .subcommand(
-                Command::new("gui")
-            )
-        .subcommand(
-                Command::new("format-cbor")
-            )
+                .arg(Arg::new("id").help("The id or path to sub to and show")),
+        )
+        .subcommand(Command::new("call").aliases(["c"]))
+        .subcommand(Command::new("create").aliases(["cr"]))
+        .subcommand(Command::new("is-running").aliases(["isr"]))
+        .subcommand(Command::new("gui"))
+        .subcommand(Command::new("format-cbor"))
         .arg_required_else_help(true);
 
     return main.get_matches();
 }
-
-

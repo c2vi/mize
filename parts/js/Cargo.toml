@@ -1,0 +1,9 @@
+[package]
+name = "js_part"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+deno_core = "0.383.0"
+mize = { path = "../../parts/mize" }
+tokio = { version = "1.49.0", features = ["full"] }

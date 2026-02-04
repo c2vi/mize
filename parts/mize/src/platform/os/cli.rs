@@ -1,30 +1,28 @@
+use clap::ArgMatches;
 use core::result::Result::Err;
 use core::unimplemented;
+use flume::bounded;
+use home::home_dir;
+use mize::mize_err;
 use std::ffi::OsString;
+use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
-use clap::ArgMatches;
-use home::home_dir;
-use flume::bounded;
-use mize::mize_err;
-use std::io::Read;
 use tracing::debug;
 
 use mize::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};
-use mize::instance::Instance;
-use mize::platform::os::config_from_cli_args;
-use mize::instance::subscription::Update;
-use mize::platform::os::fsstore::FileStore;
 use mize::instance::subscription::Subscription;
+use mize::instance::subscription::Update;
+use mize::instance::Mize;
 use mize::item::{IntoItemData, ItemData};
-
-
+use mize::platform::os::config_from_cli_args;
+use mize::platform::os::fsstore::FileStore;
 
 pub fn get(sub_matches: &ArgMatches) -> MizeResult<()> {
+    let instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
-    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
-
-    let id = sub_matches.get_one::<String>("id")
+    let id = sub_matches
+        .get_one::<String>("id")
         .ok_or(MizeError::new().msg("No id Argument specified"))?;
 
     let item = instance.get(id)?;
@@ -44,15 +42,12 @@ pub fn get(sub_matches: &ArgMatches) -> MizeResult<()> {
     return Ok(());
 }
 
-
 pub fn call(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn create(sub_matches: &ArgMatches) -> MizeResult<()> {
-
-    let mut instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+    let mut instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
     let item = instance.new_item()?;
 
@@ -62,37 +57,32 @@ pub fn create(sub_matches: &ArgMatches) -> MizeResult<()> {
     return Ok(());
 }
 
-
 pub fn is_running(sub_matches: &ArgMatches) -> MizeResult<()> {
-
     println!("not implemented");
     Err(mize_err!("not implemented"))
 }
-
 
 pub fn mount(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn run(sub_matches: &ArgMatches) -> MizeResult<()> {
-
-    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+    let instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
     instance.wait();
 
     return Ok(());
 }
 
-
 pub fn set(sub_matches: &ArgMatches) -> MizeResult<()> {
+    let instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
-    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
-
-    let id = sub_matches.get_one::<String>("id")
+    let id = sub_matches
+        .get_one::<String>("id")
         .ok_or(MizeError::new().msg("No id Argument specified"))?;
 
-    let value = sub_matches.get_one::<String>("value")
+    let value = sub_matches
+        .get_one::<String>("value")
         .ok_or(MizeError::new().msg("No value Argument specified"))?;
 
     instance.set_blocking(id, value.into_item_data())?;
@@ -100,12 +90,11 @@ pub fn set(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn show(sub_matches: &ArgMatches) -> MizeResult<()> {
+    let instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
-    let instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
-
-    let id = sub_matches.get_one::<String>("id")
+    let id = sub_matches
+        .get_one::<String>("id")
         .ok_or(MizeError::new().msg("No id Argument specified"))?;
 
     let item = instance.get(id)?;
@@ -124,14 +113,12 @@ pub fn show(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn stop(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn gui(sub_matches: &ArgMatches) -> MizeResult<()> {
-    let mut instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+    let mut instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
     instance.load_module("mme")?;
 
@@ -141,8 +128,7 @@ pub fn gui(sub_matches: &ArgMatches) -> MizeResult<()> {
 }
 
 pub fn format_cbor(sub_matches: &ArgMatches) -> MizeResult<()> {
-
-    let mut input: Vec<u8> =  Vec::new();
+    let mut input: Vec<u8> = Vec::new();
     let stdin = std::io::stdin();
     let mut handle = stdin.lock();
     //handle.read_to_end(&mut input);
@@ -155,20 +141,26 @@ pub fn format_cbor(sub_matches: &ArgMatches) -> MizeResult<()> {
     Ok(())
 }
 
-
 pub fn run_from_module(cmd: &str, sub_matches: &ArgMatches) -> MizeResult<()> {
     let default = OsString::default();
-    let mut sub_cmd_line: Vec<OsString> = sub_matches.get_many::<OsString>("").unwrap().map(|e| e.to_owned()).collect();
+    let mut sub_cmd_line: Vec<OsString> = sub_matches
+        .get_many::<OsString>("")
+        .unwrap()
+        .map(|e| e.to_owned())
+        .collect();
     sub_cmd_line.insert(0, OsString::from_str(cmd)?);
 
-    let mut instance = Instance::with_config(config_from_cli_args(sub_matches)?)?;
+    let mut instance = Mize::with_config(config_from_cli_args(sub_matches)?)?;
 
     debug!("loading module '{}'", cmd);
     instance.load_module(cmd)?;
 
-    instance.get_module(cmd)?.run_cli(&instance, sub_cmd_line)
-        .ok_or(mize_err!("The Module '{cmd}' does not implement the run_cli() functionality"))??;
+    instance
+        .get_module(cmd)?
+        .run_cli(&instance, sub_cmd_line)
+        .ok_or(mize_err!(
+            "The Module '{cmd}' does not implement the run_cli() functionality"
+        ))??;
 
     Ok(())
 }
-

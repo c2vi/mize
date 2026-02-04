@@ -1,20 +1,20 @@
 use core::fmt;
-use std::rc::Rc;
 use flume::Sender;
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::trace;
 
+use crate::error::MizeResult;
 use crate::id::MizeId;
 use crate::instance::connection::Connection;
 use crate::item::Item;
-use crate::error::MizeResult;
 use crate::proto::MizeMessage;
 
-use super::Instance;
+use super::Mize;
 
 #[derive(Clone, Debug)]
 pub struct Update {
-    pub instance: Arc<Instance>,
+    pub instance: Arc<Mize>,
     pub id: MizeId,
 }
 
@@ -31,7 +31,7 @@ pub enum Subscription {
 }
 
 impl Subscription {
-    pub  fn from_conn(conn: Connection) -> Subscription {
+    pub fn from_conn(conn: Connection) -> Subscription {
         Subscription::Connection(conn)
     }
     pub fn from_closure(closure: Box<dyn Fn(Update) -> MizeResult<()> + Send>) -> Subscription {
@@ -45,12 +45,14 @@ impl Subscription {
         trace!("handleing update");
         match &self {
             Subscription::Connection(conn) => {
-                let msg = MizeMessage::new_update(update.id.clone(), update.new_item()?.as_data_full()?, conn.id);
+                let msg = MizeMessage::new_update(
+                    update.id.clone(),
+                    update.new_item()?.as_data_full()?,
+                    conn.id,
+                );
                 conn.send(msg)?;
             }
-            Subscription::Closure(closure) => {
-                closure(update)?
-            }
+            Subscription::Closure(closure) => closure(update)?,
             Subscription::Channel(tx) => {
                 tx.send(update);
             }

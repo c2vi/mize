@@ -1,10 +1,7 @@
-use std::process::Command;
-use std::env;
+//use std::env;
 
 fn main() {
-
     // compile the string plugin
-    //let _out_dir = env::var_os("OUT_DIR").unwrap();
     //let mut string_module = Command::new("bash");
     //string_module.arg("-c");
     //string_module.arg("echo hiiiiiiiiiiiiiiiii");
@@ -15,14 +12,14 @@ fn main() {
 
     //let _res = string_module.spawn();
     //let _child = Command::new("cargo")
-        //.arg("build")
-        //.arg("--lib")
-        //.arg("--manifest-path")
-        //.arg("/home/me/work/mize/modules/modules/Blob/Cargo.toml")
-        //.spawn()
-        //.expect("failed to start wasm build");
+    //.arg("build")
+    //.arg("--lib")
+    //.arg("--manifest-path")
+    //.arg("/home/me/work/mize/modules/modules/Blob/Cargo.toml")
+    //.spawn()
+    //.expect("failed to start wasm build");
 
-        //to outdir (), using the nightly feature --out-dir to have the result there. By default I get a libhearts.rlib
+    //to outdir (), using the nightly feature --out-dir to have the result there. By default I get a libhearts.rlib
 
-    println!("cargo:rustc-link-arg=-zstack-size=0x1000000");
+    //println!("cargo:rustc-link-arg=-zstack-size=0x1000000");
 }

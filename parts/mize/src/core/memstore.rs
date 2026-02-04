@@ -1,17 +1,17 @@
+use ciborium::Value as CborValue;
+use colored::Colorize;
 use std::collections::binary_heap::Iter;
 use std::collections::HashMap;
 use std::iter::Map;
 use std::sync::{Arc, Mutex};
-use ciborium::Value as CborValue;
 use tracing::{instrument, trace};
-use colored::Colorize;
 
+use crate::error::{IntoMizeResult, MizeError, MizeResult};
 use crate::id::MizeId;
-use crate::instance::store::{Store, IdIter};
-use crate::error::{MizeError, MizeResult, IntoMizeResult};
-use crate::item::{Item, ItemData};
-use crate::instance::Instance;
+use crate::instance::store::{IdIter, Store};
+use crate::instance::Mize;
 use crate::item::get_raw_from_cbor;
+use crate::item::{Item, ItemData};
 use crate::mize_err;
 
 #[derive(Clone, Debug)]
@@ -37,13 +37,12 @@ impl Store for MemStore {
             let path = id.after_store_part();
             old_data.set_path(path, data)?;
             inner.map.insert(id_to_u64(id)?, old_data);
-
         } else {
             // if no data exists for that store_part, just insert
             inner.map.insert(id_to_u64(id)?, data);
         }
 
-        return Ok(())
+        return Ok(());
     }
     fn get_links(&self, item: Item) -> MizeResult<Vec<MizeId>> {
         let inner = self.inner.lock()?;
@@ -65,12 +64,17 @@ impl Store for MemStore {
 
     #[instrument(name="fn.MemStore::get_value_raw" skip(self))]
     fn get_value_raw(&self, id: MizeId) -> MizeResult<Vec<u8>> {
-    trace!("[ {} ] id: {:?}", "ARG".yellow(), id);
+        trace!("[ {} ] id: {:?}", "ARG".yellow(), id);
         let inner = self.inner.lock()?;
 
-        let cbor_val = inner.map.get(&id_to_u64(id.clone())?)
-            .ok_or(MizeError::new()
-            .msg(format!("Item with store_part: {}, id: {} does not exist in MemStore", id_to_u64(id.clone())?, id)))?;
+        let cbor_val = inner
+            .map
+            .get(&id_to_u64(id.clone())?)
+            .ok_or(MizeError::new().msg(format!(
+                "Item with store_part: {}, id: {} does not exist in MemStore",
+                id_to_u64(id.clone())?,
+                id
+            )))?;
 
         let path = id.path();
         let mut id_iter = path.iter();
@@ -94,7 +98,6 @@ impl Store for MemStore {
         return Ok(ret_data);
     }
     fn id_iter(&self) -> MizeResult<IdIter> {
-
         IdIter::new(Box::new(self.to_owned()))
     }
 
@@ -104,7 +107,6 @@ impl Store for MemStore {
         let mut id = str_to_u64(prev_id_str)?;
 
         loop {
-
             id += 1;
 
             if id > inner.next_id {
@@ -114,7 +116,6 @@ impl Store for MemStore {
             if inner.map.contains_key(&id) {
                 println!("returning: {}", id);
                 return Ok(Some(format!("{}", id)));
-
             } else {
                 // try id +1
                 continue;
@@ -129,8 +130,13 @@ impl Store for MemStore {
 
 impl MemStore {
     pub fn new() -> MemStore {
-        let inner = MemStoreInner { map: HashMap::new(), next_id: 0 };
-        return MemStore { inner: Arc::new(Mutex::new(inner)) };
+        let inner = MemStoreInner {
+            map: HashMap::new(),
+            next_id: 0,
+        };
+        return MemStore {
+            inner: Arc::new(Mutex::new(inner)),
+        };
     }
 }
 
@@ -139,10 +145,8 @@ fn id_to_u64(id: MizeId) -> MizeResult<u64> {
 }
 
 fn str_to_u64(id_str: &str) -> MizeResult<u64> {
-    id_str.parse()
-        .mize_result_msg(format!("Could not parse the store_part of mizeid {} into a u64 for the MemStore", id_str))
+    id_str.parse().mize_result_msg(format!(
+        "Could not parse the store_part of mizeid {} into a u64 for the MemStore",
+        id_str
+    ))
 }
-
-
-
-

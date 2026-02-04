@@ -1,27 +1,22 @@
 use flume::Receiver;
-use tracing::{error, trace, warn};
 use std::borrow::BorrowMut;
 use std::sync::Arc;
+use tracing::{error, trace, warn};
 
-use crate::mize_err;
-use crate::{instance::Instance, item::ItemData};
+use crate::error::{MizeError, MizeResult, MizeResultTrait};
 use crate::id::MizeId;
-use crate:: error::{MizeResult, MizeError, MizeResultTrait};
+use crate::mize_err;
 use crate::proto::{MessageCmd, MizeMessage};
+use crate::{instance::Mize, item::ItemData};
 
 use super::connection::{self, Connection};
 use super::subscription::{Subscription, Update};
-
 
 #[derive(Debug)]
 pub enum Operation {
     Set(MizeId, ItemData, Option<Connection>), // bool: is_from_update_msg
     Msg(MizeMessage),
 }
-
-
-
-
 
 // console_log macro
 // that can be copied into other files for debugging purposes
@@ -46,15 +41,11 @@ macro_rules! console_log {
 macro_rules! console_log {
     // Note that this is using the `log` function imported above during
     // `bare_bones`
-    ($($t:tt)*) => ()
+    ($($t:tt)*) => {};
 }
 //end of console_log macro
 
-
-
-
-
-pub async fn updater_thread_async(operation_rx : Receiver<Operation>, instance: Instance) -> () {
+pub async fn updater_thread_async(operation_rx: Receiver<Operation>, instance: Mize) -> () {
     let mut count = 0;
     console_log!("inside an updater thread");
 
@@ -84,11 +75,10 @@ pub async fn updater_thread_async(operation_rx : Receiver<Operation>, instance: 
             error!("OPERATION {} FAILED: {:?}", count, operation);
             err.log();
         }
-
     }
 }
 
-pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -> MizeResult<()> {
+pub fn updater_thread(operation_rx: Receiver<Operation>, instance: &Mize) -> MizeResult<()> {
     let mut count = 0;
 
     loop {
@@ -109,13 +99,11 @@ pub fn updater_thread(operation_rx : Receiver<Operation>, instance: &Instance) -
             error!("OPERATION FAILED: {:?}", operation);
             err.log();
         }
-
     }
     Ok(())
 }
 
-pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeResult<()> {
-
+pub fn handle_operation(operation: &mut Operation, instance: &Mize) -> MizeResult<()> {
     match operation {
         Operation::Set(id, value, maybe_conn) => {
             let item_data: ItemData = value.to_owned();
@@ -130,7 +118,6 @@ pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeR
                     id: id.clone(),
                 };
                 for sub in vec.iter_mut() {
-
                     // don't handle sub of type connection, in case the update comes from this
                     // connection
                     if let Some(conn) = maybe_conn {
@@ -144,15 +131,13 @@ pub fn handle_operation(operation: &mut Operation, instance: &Instance) -> MizeR
                     sub.handle(update.clone());
                 }
             }
-        },
-        Operation::Msg(msg) => {
-            handle_msg(msg, instance)?
-        },
+        }
+        Operation::Msg(msg) => handle_msg(msg, instance)?,
     }
     Ok(())
 }
 
-fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
+fn handle_msg(msg: &mut MizeMessage, instance: &Mize) -> MizeResult<()> {
     match msg.cmd()? {
         MessageCmd::Get => {
             let id = msg.id(instance)?;
@@ -160,7 +145,7 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
             let item = instance.get(id.clone())?;
             let msg = MizeMessage::new_give(id, item.as_data_full()?, msg.conn_id);
             connection.send(msg)?;
-        },
+        }
 
         MessageCmd::GetSub => {
             let id = msg.id(instance)?;
@@ -170,21 +155,23 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
             connection.send(msg)?;
             let sub = Subscription::from_conn(connection.clone());
             instance.sub(id, sub)?;
-        },
+        }
 
         MessageCmd::Sub => {
             let id = msg.id(instance)?;
             let mut connection = instance.get_connection(msg.conn_id)?.clone();
             let sub = Subscription::from_conn(connection.clone());
             instance.sub(id, sub)?;
-        },
+        }
 
         MessageCmd::Update => {
             let data = msg.data()?;
             let id = msg.id(instance)?;
             let connection = instance.get_connection(msg.conn_id)?;
-            instance.op_tx.send(Operation::Set(id.clone(), data, Some(connection)));
-        },
+            instance
+                .op_tx
+                .send(Operation::Set(id.clone(), data, Some(connection)));
+        }
 
         // this should check, if the update is valid
         // but for now, we do just always accept it
@@ -192,8 +179,10 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
             let data = msg.data()?;
             let id = msg.id(instance)?;
             let connection = instance.get_connection(msg.conn_id)?;
-            instance.op_tx.send(Operation::Set(id.clone(), data, Some(connection)));
-        },
+            instance
+                .op_tx
+                .send(Operation::Set(id.clone(), data, Some(connection)));
+        }
 
         MessageCmd::Give => {
             let id = msg.id(instance)?;
@@ -204,9 +193,12 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
                     tx.send(data.clone());
                 }
             } else {
-                warn!("got give msg for id '{}', that has no one waiting for it", id);
+                warn!(
+                    "got give msg for id '{}', that has no one waiting for it",
+                    id
+                );
             }
-        },
+        }
 
         MessageCmd::Create => {
             println!("instance.store: {:?}", instance.clone().store);
@@ -225,10 +217,7 @@ fn handle_msg(msg: &mut MizeMessage, instance: &Instance) -> MizeResult<()> {
         }
         _ => {
             return Err(mize_err!("got a message, that is not handeled"));
-        },
+        }
     }
     Ok(())
 }
-
-
-

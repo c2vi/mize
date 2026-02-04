@@ -1,46 +1,48 @@
+use colored::Colorize;
 use core::fmt;
+use flume::{bounded, unbounded, Receiver, Sender};
+use interner::shared::{StringPool, VecStringPool};
+use std::any::Any;
 use std::collections::HashMap;
 use std::fs::create_dir;
-use std::{thread, vec};
-use flume::{bounded, Receiver, Sender, unbounded};
+use std::fs::File;
+use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::{thread, vec};
 use tracing::{debug, error, info, trace, warn, Instrument};
 use uuid::Uuid;
-use std::fs::File;
-use colored::Colorize;
-use std::path::{Path, PathBuf};
-use interner::shared::{VecStringPool, StringPool};
 
-
-use crate::error::{MizeError, MizeResult, IntoMizeResult, MizeResultTrait};
-use crate::instance::store::Store;
-use crate::instance::updater::{ updater_thread, updater_thread_async };
+use crate::config::ConfigOptNameAndMize;
+use crate::config::{gather_config, ConfigOpt};
+use crate::error::{IntoMizeResult, MizeError, MizeResult, MizeResultTrait};
 use crate::id::{IntoMizeId, MizeId, Namespace};
+use crate::instance::store::Store;
 use crate::instance::subscription::Subscription;
+use crate::instance::updater::Operation;
+use crate::instance::updater::{updater_thread, updater_thread_async};
 use crate::item::{Item, ItemData};
 use crate::memstore::MemStore;
-use crate::instance::updater::Operation;
-use crate::{mize_err, Module};
 use crate::proto::MizeMessage;
+use crate::{mize_err, Module};
 
 use self::connection::{ConnListener, Connection};
 use self::updater::handle_operation;
 
 #[cfg(feature = "async")]
-use tokio::runtime::Runtime;
-#[cfg(feature = "async")]
 use tokio::runtime::Handle;
+#[cfg(feature = "async")]
+use tokio::runtime::Runtime;
 
 use core::future::Future;
 use std::thread::JoinHandle;
 
 pub mod connection;
+pub mod module;
+pub mod msg_thread;
 pub mod store;
 pub mod subscription;
 pub mod updater;
-pub mod msg_thread;
-pub mod module;
-
 
 // console_log macro
 // that can be copied into other files for debugging purposes
@@ -61,8 +63,17 @@ macro_rules! console_log {
     ($($t:tt)*) => (unsafe { log(&format_args!($($t)*).to_string())})
 }
 
-
-
+#[macro_export]
+macro_rules! add_parts {
+    ($mize:expr, $($part:expr),+) => {
+        $(
+            $mize.add_part(
+                Box::new($part)
+            );
+        )+
+        mize.init_parts();
+    };
+}
 
 #[cfg(test)]
 mod tests;
@@ -73,15 +84,21 @@ static BUILD_TIME_CONFIG: &str = include_str!(std::env!("MIZE_BUILD_CONFIG"));
 
 /// The Instance type is the heart of the mize system
 #[derive(Clone)]
-pub struct Instance {
-    // a bit a lot of Mutexes isn-it???
+pub struct Mize {
+    // a bit a lot of Mutexes isn't it???
     pub store: Arc<Mutex<Box<dyn Store>>>,
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Vec<Subscription>>>>,
-    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send >>>>,
+    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send>>>>,
     pub id_pool: Arc<Mutex<VecStringPool>>,
     pub namespace_pool: Arc<Mutex<StringPool>>,
+
+    pub(crate) parts: Arc<Mutex<HashMap<&'static str, Option<Box<dyn MizePart + Sync + Send>>>>>,
+
+    part_names: Arc<Mutex<Vec<&'static str>>>,
+
+    pub config_opts: Arc<Mutex<HashMap<String, ConfigOpt>>>,
 
     // the namespace the instance operates in
     pub namespace: Arc<Mutex<Namespace>>,
@@ -100,18 +117,84 @@ pub struct Instance {
 }
 
 pub struct InstanceRef {
-    inner: Arc<Mutex<Instance>>,
+    inner: Arc<Mutex<Mize>>,
 }
 
 pub struct InstanceAsync {
-    inner: Arc<Mutex<Instance>>,
+    inner: Arc<Mutex<Mize>>,
 }
 
+pub struct DynMizePartGuard {
+    pub mize: Mize,
+    pub part: Option<Box<dyn MizePart + Send + Sync>>,
+}
 
-impl Instance {
-    pub fn empty() -> MizeResult<Instance> {
+pub struct MizePartGuard<T: MizePart + Send + Sync> {
+    pub mize: Mize,
+    pub part: Option<T>,
+}
 
+impl<T: MizePart + Send + Sync + Deref<Target = T>> Deref for MizePartGuard<T> {
+    type Target = T;
 
+    fn deref(&self) -> &Self::Target {
+        &*self.part.as_deref().unwrap()
+    }
+}
+
+impl<T: MizePart + Send + Sync + DerefMut<Target = T>> DerefMut for MizePartGuard<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.part.as_deref_mut().unwrap()
+    }
+}
+
+impl<T: MizePart + Send + Sync> Drop for MizePartGuard<T> {
+    fn drop(&mut self) {
+        let part = self.part.take().unwrap();
+        self.mize.give_back_part(Box::new(part));
+    }
+}
+
+impl Deref for DynMizePartGuard {
+    type Target = dyn MizePart + Send + Sync;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.part.as_deref().unwrap()
+    }
+}
+
+impl DerefMut for DynMizePartGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.part.as_deref_mut().unwrap()
+    }
+}
+
+impl Drop for DynMizePartGuard {
+    fn drop(&mut self) {
+        self.mize.give_back_part(self.part.take().unwrap());
+    }
+}
+
+pub trait MizePart: Any + Send + Sync {
+    fn name(&self) -> &'static str;
+    fn get_mize(&mut self) -> &mut Mize;
+    fn init(&mut self, mize: &mut Mize) -> MizeResult<()> {
+        Ok(())
+    }
+    fn run(&mut self, mize: &mut Mize) -> MizeResult<()> {
+        Ok(())
+    }
+    fn deps(&self) -> &'static [&'static str] {
+        &[]
+    }
+    fn opts(&self, mize: &mut Mize) {}
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&self) -> &dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl Mize {
+    pub fn empty() -> MizeResult<Mize> {
         let id_pool = Arc::new(Mutex::new(VecStringPool::default()));
         let namespace_pool_raw = StringPool::default();
         let connections = Arc::new(Mutex::new(Vec::new()));
@@ -119,26 +202,37 @@ impl Instance {
         let (op_tx, op_rx) = unbounded();
         let give_msg_wait = Arc::new(Mutex::new(HashMap::new()));
         let create_msg_wait = Arc::new(Mutex::new(None));
-        let namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
-        let self_namespace = Arc::new(Mutex::new(Namespace ( namespace_pool_raw.get("mize.default.namespace") )));
+        let namespace = Arc::new(Mutex::new(Namespace(
+            namespace_pool_raw.get("mize.default.namespace"),
+        )));
+        let self_namespace = Arc::new(Mutex::new(Namespace(
+            namespace_pool_raw.get("mize.default.namespace"),
+        )));
 
-
-        let mut instance = Instance { 
+        let mut instance = Mize {
             store: Arc::new(Mutex::new(Box::new(MemStore::new()))),
-            connections, subs, id_pool,
-            namespace, self_namespace, op_tx,
+            parts: Arc::new(Mutex::new(HashMap::new())),
+            part_names: Arc::new(Mutex::new(Vec::new())),
+            config_opts: Arc::new(Mutex::new(HashMap::new())),
+            connections,
+            subs,
+            id_pool,
+            namespace,
+            self_namespace,
+            op_tx,
             namespace_pool: Arc::new(Mutex::new(namespace_pool_raw)),
             modules: Arc::new(Mutex::new(HashMap::new())),
             threads: Arc::new(Mutex::new(Vec::new())),
             next_thread_id: Arc::new(Mutex::new(0)),
             next_con_id: Arc::new(Mutex::new(1)),
-            give_msg_wait, create_msg_wait,
+            give_msg_wait,
+            create_msg_wait,
 
             #[cfg(feature = "async")]
-            runtime: Arc::new(Mutex::new(Runtime::new().mize_result_msg("Could not create async runtime")?)),
+            runtime: Arc::new(Mutex::new(
+                Runtime::new().mize_result_msg("Could not create async runtime")?,
+            )),
         };
-
-
 
         #[cfg(feature = "os-target")]
         {
@@ -151,7 +245,6 @@ impl Instance {
             let closure_two = move || updater_thread(op_rx, &instance_clone_two);
             instance.spawn("updater_thread", closure_two)?;
         }
-
 
         // set up async update "threads" when using wasm
         #[cfg(feature = "wasm-target")]
@@ -180,33 +273,54 @@ impl Instance {
         #[cfg(feature = "wasm-target")]
         console_log!("after loading build time config");
 
-
         return Ok(instance);
     }
 
-    pub fn new() -> MizeResult<Instance> {
+    pub fn new() -> MizeResult<Mize> {
         trace!("[ {} ] Instance::new()", "CALL".yellow());
 
-
-        let mut instance = Instance::empty()?;
-
+        let mut instance = Mize::empty()?;
 
         instance.init();
 
-
-        debug!("instance inited with config: {}", instance.get("0/config")?.as_data_full()?);
-
+        debug!(
+            "instance inited with config: {}",
+            instance.get("0/config")?.as_data_full()?
+        );
 
         return Ok(instance);
     }
 
+    pub fn get_part(&mut self, name: &str) -> MizeResult<DynMizePartGuard> {
+        match self.parts.lock().unwrap().get_mut(name) {
+            Some(part) => Ok(DynMizePartGuard {
+                part: Some(part.take().unwrap()),
+                mize: self.clone(),
+            }),
+            None => Err(mize_err!("Part not found or currently taken")),
+        }
+    }
+    pub fn add_part(&mut self, part: Box<dyn MizePart>) -> MizeResult<()> {
+        self.part_names.lock().unwrap().push(part.name());
+        self.parts.lock().unwrap().insert(part.name(), Some(part));
+        Ok(())
+    }
+    fn part_names(&mut self) -> Vec<&'static str> {
+        self.part_names.lock().unwrap().clone()
+    }
+
+    pub(crate) fn give_back_part(&mut self, part: Box<dyn MizePart + Send + Sync>) {
+        self.parts.lock().unwrap().insert(part.name(), Some(part));
+    }
+
     pub fn init(&mut self) -> MizeResult<()> {
+        // gather options
+        gather_config(self)?;
 
         // platform specific init code
         crate::platform::any::instance_init(self)?;
 
         // end of platform specific init code
-
 
         // load the modules, ad specified in the load_modules config
         match self.get("0/config/load_modules")?.value_string() {
@@ -216,23 +330,21 @@ impl Instance {
                     console_log!("loading module in Instance::init() ... {}", module);
                     self.load_module(module)?;
                 }
-            },
+            }
             Err(err) => {
                 // no load_modules option is set
             }
         }
 
-
-
         debug!("INSTANCE INIT DONE");
         Ok(())
     }
 
-    pub fn with_config(config: ItemData) -> MizeResult<Instance> {
+    pub fn with_config(config: ItemData) -> MizeResult<Mize> {
         trace!("[ {} ] Instance::with_config()", "CALL".yellow());
         trace!("config: {}", config);
 
-        let mut instance = Instance::empty()?;
+        let mut instance = Mize::empty()?;
 
         instance.set_blocking("0", config);
 
@@ -254,7 +366,7 @@ impl Instance {
 
             let id_of_new_store = new_store.new_id()?;
             new_store.set(self.id_from_string(id_of_new_store)?, data.to_owned())?;
-        };
+        }
 
         *old_store = new_store;
 
@@ -297,9 +409,16 @@ impl Instance {
         self.op_tx.send(Operation::Set(id, value.into(), None));
         Ok(())
     }
-    
-    pub fn set_blocking<I: IntoMizeId, V: Into<ItemData>>(&self, id: I, value: V) -> MizeResult<()> {
-        handle_operation(&mut Operation::Set(id.to_mize_id(self)?, value.into(), None), self)?;
+
+    pub fn set_blocking<I: IntoMizeId, V: Into<ItemData>>(
+        &self,
+        id: I,
+        value: V,
+    ) -> MizeResult<()> {
+        handle_operation(
+            &mut Operation::Set(id.to_mize_id(self)?, value.into(), None),
+            self,
+        )?;
         Ok(())
     }
 
@@ -309,7 +428,7 @@ impl Instance {
         match subs_inner.get_mut(&id) {
             Some(vec) => {
                 vec.push(sub);
-            },
+            }
             None => {
                 subs_inner.insert(id.clone(), vec![sub]);
             }
@@ -330,26 +449,43 @@ impl Instance {
     }
 
     pub fn id_from_string(&self, string: String) -> MizeResult<MizeId> {
-        let vec_string: Vec<String> = string.split("/").map(|v| v.to_owned()).filter(|el| el.as_str() != "").collect();
+        let vec_string: Vec<String> = string
+            .split("/")
+            .map(|v| v.to_owned())
+            .filter(|el| el.as_str() != "")
+            .collect();
         self.id_from_vec_string(vec_string)
     }
 
     pub fn id_from_vec_string(&self, mut vec_string: Vec<String>) -> MizeResult<MizeId> {
         let id_pool_inner = self.id_pool.lock()?;
         let namespace_inner = self.namespace.lock()?;
-        let first_el = vec_string.first_mut().ok_or(mize_err!("MizeId was empty"))?;
+        let first_el = vec_string
+            .first_mut()
+            .ok_or(mize_err!("MizeId was empty"))?;
 
-        let id = if first_el.contains(":") { // first el is a namespace + store_part
+        let id = if first_el.contains(":") {
+            // first el is a namespace + store_part
             let new_first_el = first_el.clone();
             let vec: Vec<&str> = new_first_el.split(":").collect();
-            let ns_part = vec.iter().nth(0).ok_or(mize_err!("should really not happen"))?;
-            let store_part = vec.iter().nth(1).ok_or(mize_err!("mizeid was like 'namespace:/hi', why are you doing that"))?;
+            let ns_part = vec
+                .iter()
+                .nth(0)
+                .ok_or(mize_err!("should really not happen"))?;
+            let store_part = vec.iter().nth(1).ok_or(mize_err!(
+                "mizeid was like 'namespace:/hi', why are you doing that"
+            ))?;
             *first_el = store_part.to_owned().to_owned();
 
-            MizeId { path: id_pool_inner.get(vec_string), namespace: self.namespace_from_string(ns_part.to_owned().to_owned())? }
+            MizeId {
+                path: id_pool_inner.get(vec_string),
+                namespace: self.namespace_from_string(ns_part.to_owned().to_owned())?,
+            }
         } else {
-
-            MizeId { path: id_pool_inner.get(vec_string), namespace: namespace_inner.clone() }
+            MizeId {
+                path: id_pool_inner.get(vec_string),
+                namespace: namespace_inner.clone(),
+            }
         };
         trace!("new MizeId made: {:?}", id);
 
@@ -373,14 +509,17 @@ impl Instance {
     pub fn get_module(&mut self, name: &str) -> MizeResult<Box<dyn Module + Send + Sync>> {
         let inner = self.modules.lock()?;
 
-        let module = inner.get(name).ok_or(mize_err!("Couldn't get_module('{name}')"))?.clone_module();
+        let module = inner
+            .get(name)
+            .ok_or(mize_err!("Couldn't get_module('{name}')"))?
+            .clone_module();
 
         Ok(module)
     }
 
     pub fn namespace_from_string(&self, ns_str: String) -> MizeResult<Namespace> {
         let namespace_pool_inner = self.namespace_pool.lock()?;
-        let namespace = Namespace ( namespace_pool_inner.get(ns_str) );
+        let namespace = Namespace(namespace_pool_inner.get(ns_str));
         Ok(namespace)
     }
 
@@ -405,7 +544,7 @@ impl Instance {
         Ok(self.get_namespace()? == self.get_self_namespace()?)
     }
 
-    pub fn add_listener<T: ConnListener +'static>(&mut self, listener: T) -> MizeResult<()> {
+    pub fn add_listener<T: ConnListener + 'static>(&mut self, listener: T) -> MizeResult<()> {
         let mut instance_clone = self.clone();
         self.spawn("some_listener", move || listener.listen(instance_clone));
         Ok(())
@@ -416,7 +555,11 @@ impl Instance {
         let mut next_con_id = self.next_con_id.lock()?;
         let old_next_con_id = *next_con_id;
 
-        let connection = Connection { id: next_con_id.to_owned(), tx, ns: None};
+        let connection = Connection {
+            id: next_con_id.to_owned(),
+            tx,
+            ns: None,
+        };
         conn_inner.push(connection);
         *next_con_id += 1;
         Ok(old_next_con_id)
@@ -425,7 +568,12 @@ impl Instance {
     pub fn new_connection_join_namespace(&self, tx: Sender<MizeMessage>) -> MizeResult<u64> {
         let conn_id = self.new_connection(tx)?;
 
-        let ns_of_peer_str = self.get(format!("inst/con_by_id/{}/peer/0/config/namespace", conn_id))?.value_string()?;
+        let ns_of_peer_str = self
+            .get(format!(
+                "inst/con_by_id/{}/peer/0/config/namespace",
+                conn_id
+            ))?
+            .value_string()?;
         let ns_of_peer = self.namespace_from_string(ns_of_peer_str)?;
 
         self.connection_set_namespace(conn_id, ns_of_peer.clone());
@@ -459,7 +607,10 @@ impl Instance {
             }
         }
 
-        return Err(mize_err!("Connection with id {} not known to instance", conn_id));
+        return Err(mize_err!(
+            "Connection with id {} not known to instance",
+            conn_id
+        ));
         Ok(())
     }
 
@@ -472,7 +623,10 @@ impl Instance {
             }
         }
 
-        return Err(mize_err!("Connection with id {} not known to instance", conn_id));
+        return Err(mize_err!(
+            "Connection with id {} not known to instance",
+            conn_id
+        ));
     }
 
     pub fn get_connection_by_ns(&self, ns: Namespace) -> MizeResult<Connection> {
@@ -484,11 +638,17 @@ impl Instance {
             }
         }
 
-        return Err(mize_err!("Connection with namespace {} not known to instance", ns.as_string()));
+        return Err(mize_err!(
+            "Connection with namespace {} not known to instance",
+            ns.as_string()
+        ));
     }
 
-    pub fn spawn(&mut self, name: &str, func: impl FnOnce() -> MizeResult<()> + Send + 'static) -> MizeResult<()> {
-
+    pub fn spawn(
+        &mut self,
+        name: &str,
+        func: impl FnOnce() -> MizeResult<()> + Send + 'static,
+    ) -> MizeResult<()> {
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 
@@ -504,10 +664,14 @@ impl Instance {
             func()?;
 
             let mut threads_inner = thread_mutex.lock()?;
-            *threads_inner = threads_inner.clone().into_iter().filter(|el| match el {
-                (my_thread_id, _) => false,
-                (_, _) => true,
-            }).collect();
+            *threads_inner = threads_inner
+                .clone()
+                .into_iter()
+                .filter(|el| match el {
+                    (my_thread_id, _) => false,
+                    (_, _) => true,
+                })
+                .collect();
             debug!("thread '{}' stopped", name_to_move);
             Ok(())
         };
@@ -528,7 +692,6 @@ impl Instance {
     }
 
     pub fn give_msg_wait(&self, id: MizeId) -> MizeResult<ItemData> {
-
         let mut give_msg_wait_inner = self.give_msg_wait.lock()?;
 
         let (tx, rx) = bounded::<ItemData>(1);
@@ -552,9 +715,12 @@ impl Instance {
         return Ok(data);
     }
 
-
     #[cfg(feature = "async")]
-    pub fn spawn_async<F: Future<Output = impl Send + 'static> + Send + 'static>(&mut self, name: &str, func: F) -> MizeResult<()> {
+    pub fn spawn_async<F: Future<Output = impl Send + 'static> + Send + 'static>(
+        &mut self,
+        name: &str,
+        func: F,
+    ) -> MizeResult<()> {
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 
@@ -567,7 +733,6 @@ impl Instance {
         Ok(())
     }
 
-
     #[cfg(feature = "async")]
     pub fn async_get_handle(&self) -> Handle {
         let runtime_inner = self.runtime.lock().unwrap();
@@ -576,10 +741,21 @@ impl Instance {
     }
 
     #[cfg(feature = "async")]
-    pub fn spawn_async_blocking<F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static>(&mut self, name: &str, func: F) -> F::Output {
-
-        let mut threads_inner = self.threads.lock().expect("mutex lock failed in spawn_async_blocking");
-        let mut next_thread_id = self.next_thread_id.lock().expect("mutex lock failed in spawn_async_blocking");
+    pub fn spawn_async_blocking<
+        F: Future<Output = impl Send + Sync + 'static> + Send + Sync + 'static,
+    >(
+        &mut self,
+        name: &str,
+        func: F,
+    ) -> F::Output {
+        let mut threads_inner = self
+            .threads
+            .lock()
+            .expect("mutex lock failed in spawn_async_blocking");
+        let mut next_thread_id = self
+            .next_thread_id
+            .lock()
+            .expect("mutex lock failed in spawn_async_blocking");
 
         threads_inner.push((*next_thread_id, name.to_owned()));
         let runtime_inner = self.runtime.lock().unwrap();
@@ -592,7 +768,6 @@ impl Instance {
 
         let result = handle.block_on(func);
 
-
         return result;
     }
 
@@ -603,15 +778,60 @@ impl Instance {
         }
     }
 
-
     pub fn report_error(err: MizeError) {
         err.log();
     }
+
+    pub fn get_config(&mut self, name: &str) -> MizeResult<ItemData> {
+        let mut config_opts = self.config_opts.lock().unwrap();
+
+        let opt = config_opts
+            .get_mut(name)
+            .ok_or_else(|| mize_err!("Config opt for {name} not in config_opts"))?;
+
+        // get the cached value
+        if let Some(val) = opt.val.clone() {
+            return Ok(val);
+        }
+
+        // Evaluate the thunk
+        let thunk = opt
+            .thunk
+            .take()
+            .ok_or_else(|| mize_err!("ConfigOpt {name} does not have a thunk"))?;
+        let result = thunk();
+
+        // Cache the result
+        opt.val = Some(result.clone());
+
+        return Ok(result);
+    }
+
+    pub fn new_opt(&mut self, name: &str) -> ConfigOptNameAndMize {
+        let mut config_opts = self.config_opts.lock().unwrap();
+        let opt = ConfigOpt {
+            name: name.to_owned(),
+            val: None,
+            thunk: None,
+        };
+        config_opts.insert(name.to_string(), opt);
+        ConfigOptNameAndMize {
+            name: name.to_string(),
+            mize: self.clone(),
+        }
+    }
+
+    pub fn run(&mut self) -> MizeResult<()> {
+        let mut parts = self.parts.lock().unwrap();
+        for part in parts.values_mut() {
+            part.as_deref_mut().unwrap().run(&mut self.clone())?;
+        }
+        Ok(())
+    }
 }
 
-impl fmt::Debug for Instance {
+impl fmt::Debug for Mize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Mize Instance with subs: {:?}", self.subs,)
     }
 }
-

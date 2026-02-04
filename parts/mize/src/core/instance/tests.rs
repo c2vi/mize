@@ -1,15 +1,13 @@
-
 use tracing_subscriber::registry::Data;
 
 use crate::item::IntoItemData;
 
 use super::*;
 
-
 #[test]
 fn test_sort_keys() -> MizeResult<()> {
-
-    let mut data = ItemData::from_toml(r#"
+    let mut data = ItemData::from_toml(
+        r#"
         [hi]
         test = 4
 
@@ -19,9 +17,11 @@ fn test_sort_keys() -> MizeResult<()> {
 
         [config.test]
         inner = "inner"
-    "#)?;
+    "#,
+    )?;
 
-    let data_sorted = ItemData::from_toml(r#"
+    let data_sorted = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
         test = { inner = "inner" }
@@ -29,19 +29,19 @@ fn test_sort_keys() -> MizeResult<()> {
 
         [hi]
         test = 4
-    "#)?;
+    "#,
+    )?;
 
     data.sort_keys()?;
 
     assert_eq!(data.to_json()?, data_sorted.to_json()?);
-
 
     Ok(())
 }
 
 #[test]
 fn test_get_module_hash() -> MizeResult<()> {
-    let mut instance = Instance::empty()?;
+    let mut instance = Mize::empty()?;
 
     use crate::platform::os::get_module_hash;
     let selector_toml = r#"
@@ -64,7 +64,7 @@ fn test_get_module_hash() -> MizeResult<()> {
 
 #[test]
 fn test_set_store_path() -> MizeResult<()> {
-    let instance = Instance::empty()?;
+    let instance = Mize::empty()?;
 
     let store_path = "/home/me/.mize".to_owned();
 
@@ -83,23 +83,27 @@ fn test_set_store_path() -> MizeResult<()> {
 
 #[test]
 fn test_set_sub_path() -> MizeResult<()> {
-    let instance = Instance::empty()?;
+    let instance = Mize::empty()?;
 
-    let data = ItemData::from_toml(r#"
+    let data = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "inner"
-    "#)?;
+    "#,
+    )?;
 
-    let data_two = ItemData::from_toml(r#"
+    let data_two = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "new inner"
-    "#)?;
+    "#,
+    )?;
 
     let item = instance.new_item()?;
     instance.set_blocking(item.id(), data.clone())?;
@@ -107,11 +111,23 @@ fn test_set_sub_path() -> MizeResult<()> {
     assert_eq!(item.as_data_full()?, data);
 
     // try to set a sub path of item
-    instance.set_blocking(vec![item.id().store_part(), "config", "test", "inner"], "new inner".into_item_data())?;
+    instance.set_blocking(
+        vec![item.id().store_part(), "config", "test", "inner"],
+        "new inner".into_item_data(),
+    )?;
 
     // the contents of item should then be like data_two
-    println!("item with id '{}': {}", item.id(), instance.get(vec![item.id().store_part()])?.as_data_full()?);
-    assert_eq!(instance.get(vec![item.id().store_part(), "config", "test", "inner"])?.as_data_full()?, ItemData::from_string("new inner"));
+    println!(
+        "item with id '{}': {}",
+        item.id(),
+        instance.get(vec![item.id().store_part()])?.as_data_full()?
+    );
+    assert_eq!(
+        instance
+            .get(vec![item.id().store_part(), "config", "test", "inner"])?
+            .as_data_full()?,
+        ItemData::from_string("new inner")
+    );
     assert_eq!(item.as_data_full()?, data_two);
 
     Ok(())
@@ -119,23 +135,30 @@ fn test_set_sub_path() -> MizeResult<()> {
 
 #[test]
 fn test_itemdata_set_path() -> MizeResult<()> {
-    let mut data = ItemData::from_toml(r#"
+    let mut data = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "inner"
-    "#)?;
+    "#,
+    )?;
 
-    let data_two = ItemData::from_toml(r#"
+    let data_two = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "new inner"
-    "#)?;
+    "#,
+    )?;
 
-    data.set_path(vec!["config", "test", "inner"], ItemData::from_string("new inner"))?;
+    data.set_path(
+        vec!["config", "test", "inner"],
+        ItemData::from_string("new inner"),
+    )?;
 
     assert_eq!(data, data_two);
 
@@ -144,57 +167,71 @@ fn test_itemdata_set_path() -> MizeResult<()> {
 
 #[test]
 fn test_itemdata_merge() -> MizeResult<()> {
-    let mut data = ItemData::from_toml(r#"
+    let mut data = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "inner"
-    "#)?;
+    "#,
+    )?;
 
-    let data_two = ItemData::from_toml(r#"
+    let data_two = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "new inner"
-    "#)?;
+    "#,
+    )?;
 
-    assert_eq!(data.get_path(vec!["config", "test", "inner"])?, ItemData::from_string("inner"));
+    assert_eq!(
+        data.get_path(vec!["config", "test", "inner"])?,
+        ItemData::from_string("inner")
+    );
 
     data.merge(data_two.clone());
 
     assert_eq!(data, data_two);
 
-    assert_eq!(data.get_path(vec!["config", "test", "inner"])?, ItemData::from_string("new inner"));
+    assert_eq!(
+        data.get_path(vec!["config", "test", "inner"])?,
+        ItemData::from_string("new inner")
+    );
 
     Ok(())
 }
 
 #[test]
 fn test_item_merge() -> MizeResult<()> {
-    let instance = Instance::empty()?;
+    let instance = Mize::empty()?;
 
     let mut item = instance.new_item()?;
 
     // here the item should contain "empty" data
     assert_eq!(item.as_data_full()?, ItemData::new());
 
-    let data = ItemData::from_toml(r#"
+    let data = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "inner"
-    "#)?;
+    "#,
+    )?;
 
-    let data_two = ItemData::from_toml(r#"
+    let data_two = ItemData::from_toml(
+        r#"
         [config]
         hi = "hello from config/hi"
 
         [config.test]
         inner = "new inner"
-    "#)?;
+    "#,
+    )?;
 
     item.merge(data.clone())?;
 
@@ -213,7 +250,6 @@ fn test_item_merge() -> MizeResult<()> {
     // also the item should be updated
     assert_eq!(item.as_data_full()?, data_two);
 
-
     Ok(())
 }
 
@@ -225,6 +261,3 @@ fn test_cant_set_non_existent_item() -> () {
     instance.set_blocking("5", "hello world".into_item_data()).expect("correct panic");
 }
 */
-
-
-

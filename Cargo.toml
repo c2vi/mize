@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+  "parts/js",
+  "apps/ppc",
+  "parts/mize"
+, "parts/cli"]
