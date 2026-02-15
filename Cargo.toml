@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-  "parts/js",
-  "apps/ppc",
-  "parts/mize"
-, "parts/cli", "parts/macro_mize"]
+  "crates/mize",
+  "crates/vic",
+  "crates/ppc"
+, "crates/parts", "crates/macro_mize", "crates/mme"]
