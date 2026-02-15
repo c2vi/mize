@@ -39,6 +39,7 @@ toml = { version = "0.8.13", features = ["parse"], optional = false }
 dyn-clone = "1.0.17"
 sha2 = "0.10.8"
 flume = "0.11.1"
+mize_macros = { path = "../macro_mize" }
 
 # buildin modules
 #mize_module_blob = { path = "./modules/modules/Blob" }
@@ -74,6 +75,7 @@ http_req = { git = "https://github.com/c2vi/http_req", optional = true, default-
 axum = { version = "0.6.1", features = ["ws", "headers"], optional = true }
 axum-extra = { version = "0.4.2", features = ["spa"], optional = true }
 axum-macros = { version = "0.3.0", optional = true }
+async-trait = "0.1.89"
 #tokio-core = "0.1.18"
 #tokio-io = "0.1.13"
 
@@ -94,4 +96,3 @@ wasm-bindgen-test = { version = "0.3.34" }
 [profile.release]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
-

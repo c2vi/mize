@@ -36,17 +36,23 @@ mod core {
     pub mod id;
     pub mod instance;
     pub mod item;
+    pub mod macros;
     pub mod memstore;
     pub mod proto;
     pub mod types;
 }
 
+pub use async_trait::async_trait;
 pub use core::error::MizeError;
 pub use core::error::MizeResult;
 pub use core::instance::module::Module;
 pub use core::instance::Mize;
-pub use core::instance::MizePart;
+pub use core::instance::{
+    DynMizePartGuard, MizePart, MizePartCreate, MizePartCreateGenerated, MizePartGenerated,
+    MizePartGuard,
+};
 pub use core::*;
+pub use mize_macros::*;
 use std::path::PathBuf;
 
 // platform specific stuff

@@ -1769,6 +1769,7 @@ dependencies = [
 name = "mize"
 version = "0.0.1"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-extra",
  "axum-macros",
@@ -1785,6 +1786,7 @@ dependencies = [
  "http_req",
  "interner",
  "libloading",
+ "mize_macros",
  "nix",
  "serde",
  "serde-wasm-bindgen",
@@ -1804,6 +1806,14 @@ dependencies = [
  "wasm-bindgen-test",
  "web-sys",
  "wee_alloc",
+]
+
+[[package]]
+name = "mize_macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]

@@ -88,7 +88,7 @@ rec {
           (crane.mkLib pkgs).overrideToolchain (fenix.packages.${buildSystem}.combine [
             #fenix.packages.${buildSystem}.minimal.rustc
             #fenix.packages.${buildSystem}.minimal.cargo
-            fenix.packages.${buildSystem}.stable.toolchain
+            fenix.packages.${buildSystem}.nightly.toolchain
             fenix.packages.${buildSystem}.targets."${hostSystem.cpu.name}-pc-windows-gnu".stable.toolchain
           ])
 
@@ -271,8 +271,8 @@ rec {
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
         pkgs.pkg-config
         (fenix.packages."x86_64-linux".combine [ 
-          fenix.packages."x86_64-linux".stable.toolchain
-          fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.stable.toolchain
+          fenix.packages."x86_64-linux".latest.toolchain
+          fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.latest.toolchain
         ])
 
         # the shell script, to mk the dist folder, for a standard rust module
@@ -388,5 +388,3 @@ rec {
   };
 
 }
-
-

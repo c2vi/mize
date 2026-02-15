@@ -35,7 +35,7 @@ let
   ];
   wasmCrane = (crane.mkLib pkgs).overrideToolchain wasmToolchain;
 
-  osToolchain = fenix.packages.${system}.stable.toolchain;
+  osToolchain = fenix.packages.${system}.nightly.toolchain;
 
   osCrane = (crane.mkLib pkgs).overrideToolchain osToolchain;
 
@@ -222,4 +222,3 @@ in {
     rustPkgs = import nixpkgs { overlays = [rust-overlay.overlays.default]; system = "x86_64-linux"; };
   };
 }
-

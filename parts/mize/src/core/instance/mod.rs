@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use colored::Colorize;
 use core::fmt;
 use flume::{bounded, unbounded, Receiver, Sender};
@@ -43,37 +44,6 @@ pub mod msg_thread;
 pub mod store;
 pub mod subscription;
 pub mod updater;
-
-// console_log macro
-// that can be copied into other files for debugging purposes
-#[cfg(feature = "wasm-target")]
-use wasm_bindgen::prelude::*;
-
-#[cfg(feature = "wasm-target")]
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-
-#[cfg(feature = "wasm-target")]
-macro_rules! console_log {
-    // Note that this is using the `log` function imported above during
-    // `bare_bones`
-    ($($t:tt)*) => (unsafe { log(&format_args!($($t)*).to_string())})
-}
-
-#[macro_export]
-macro_rules! add_parts {
-    ($mize:expr, $($part:expr),+) => {
-        $(
-            $mize.add_part(
-                Box::new($part)
-            );
-        )+
-        mize.init_parts();
-    };
-}
 
 #[cfg(test)]
 mod tests;
@@ -129,7 +99,7 @@ pub struct DynMizePartGuard {
     pub part: Option<Box<dyn MizePart + Send + Sync>>,
 }
 
-pub struct MizePartGuard<T: MizePart + Send + Sync> {
+pub struct MizePartGuard<T: MizePart + Send + Sync + 'static> {
     pub mize: Mize,
     pub part: Option<T>,
 }
@@ -175,9 +145,40 @@ impl Drop for DynMizePartGuard {
     }
 }
 
-pub trait MizePart: Any + Send + Sync {
-    fn name(&self) -> &'static str;
-    fn get_mize(&mut self) -> &mut Mize;
+pub trait MizePartCreateGenerated: Sized {
+    fn create_generated(mize: Mize) -> Self;
+}
+pub trait MizePartGenerated {
+    fn name_generated(&self) -> &'static str;
+    fn get_mize_generated(&mut self) -> &mut Mize;
+    fn as_any_generated(&self) -> &dyn Any;
+    fn as_any_mut_generated(&mut self) -> &mut dyn Any;
+    fn into_any_generated(self: Box<Self>) -> Box<dyn Any>;
+}
+
+pub trait MizePartCreate: MizePartCreateGenerated + MizePart + 'static {
+    fn create(mize: &mut Mize) -> Box<dyn MizePart> {
+        Box::new(Self::create_generated(mize.clone()))
+    }
+}
+
+#[async_trait]
+pub trait MizePart: MizePartGenerated {
+    fn name(&self) -> &'static str {
+        self.name_generated()
+    }
+    fn get_mize(&mut self) -> &mut Mize {
+        self.get_mize_generated()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self.as_any_generated()
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self.as_any_mut_generated()
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self.into_any_generated()
+    }
     fn init(&mut self, mize: &mut Mize) -> MizeResult<()> {
         Ok(())
     }
@@ -187,10 +188,15 @@ pub trait MizePart: Any + Send + Sync {
     fn deps(&self) -> &'static [&'static str] {
         &[]
     }
-    fn opts(&self, mize: &mut Mize) {}
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&self) -> &dyn Any;
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+    fn opts(&self, mize: &mut Mize) {
+        ()
+    }
+    async fn async_run(&mut self, mize: &mut Mize) -> MizeResult<()> {
+        Ok(())
+    }
+    async fn async_init(&mut self, mize: &mut Mize) -> MizeResult<()> {
+        Ok(())
+    }
 }
 
 impl Mize {
@@ -300,7 +306,7 @@ impl Mize {
             None => Err(mize_err!("Part not found or currently taken")),
         }
     }
-    pub fn add_part(&mut self, part: Box<dyn MizePart>) -> MizeResult<()> {
+    pub fn add_part(&mut self, part: Box<dyn MizePart + Send + Sync>) -> MizeResult<()> {
         self.part_names.lock().unwrap().push(part.name());
         self.parts.lock().unwrap().insert(part.name(), Some(part));
         Ok(())
@@ -827,6 +833,19 @@ impl Mize {
             part.as_deref_mut().unwrap().run(&mut self.clone())?;
         }
         Ok(())
+    }
+
+    pub fn get_part_native<T: MizePart + Send + Sync + 'static>(
+        &mut self,
+        name: &str,
+    ) -> MizeResult<MizePartGuard<T>> {
+        let mut dyn_guard = self.get_part(name)?;
+        let part = dyn_guard.part.take().unwrap();
+        let concrete_part = part.into_any().downcast::<T>().unwrap();
+        Ok(MizePartGuard {
+            mize: self.clone(),
+            part: Some(*concrete_part),
+        })
     }
 }
 

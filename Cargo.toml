@@ -4,4 +4,4 @@ members = [
   "parts/js",
   "apps/ppc",
   "parts/mize"
-, "parts/cli"]
+, "parts/cli", "parts/macro_mize"]
