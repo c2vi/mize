@@ -4,5 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mize = { path = "../../parts/mize" }
-js_part = { path = "../../parts/js" }
+mize = { path = "../mize" }
+marts = { path = "../marts/" }
+clap = "4.5.59"
+
+[[bin]]
+name = "ppc"
+path = "src/platform/os/main.rs"
+
+[features]
+default = ["target-os"]
+target-os = []

@@ -104,22 +104,25 @@ pub struct MizePartGuard<T: MizePart + Send + Sync + 'static> {
     pub part: Option<T>,
 }
 
-impl<T: MizePart + Send + Sync + Deref<Target = T>> Deref for MizePartGuard<T> {
+impl<T: MizePart + Send + Sync> Deref for MizePartGuard<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.part.as_deref().unwrap()
+        &*self.part.as_ref().unwrap()
     }
 }
 
-impl<T: MizePart + Send + Sync + DerefMut<Target = T>> DerefMut for MizePartGuard<T> {
+impl<T: MizePart + Send + Sync> DerefMut for MizePartGuard<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.part.as_deref_mut().unwrap()
+        &mut *self.part.as_mut().unwrap()
     }
 }
 
 impl<T: MizePart + Send + Sync> Drop for MizePartGuard<T> {
     fn drop(&mut self) {
+        if self.part.is_none() {
+            return;
+        }
         let part = self.part.take().unwrap();
         self.mize.give_back_part(Box::new(part));
     }
@@ -141,6 +144,9 @@ impl DerefMut for DynMizePartGuard {
 
 impl Drop for DynMizePartGuard {
     fn drop(&mut self) {
+        if self.part.is_none() {
+            return;
+        }
         self.mize.give_back_part(self.part.take().unwrap());
     }
 }
@@ -307,6 +313,11 @@ impl Mize {
         }
     }
     pub fn add_part(&mut self, part: Box<dyn MizePart + Send + Sync>) -> MizeResult<()> {
+        self.part_names.lock().unwrap().push(part.name());
+        self.parts.lock().unwrap().insert(part.name(), Some(part));
+        Ok(())
+    }
+    pub fn register_part(&mut self, part: Box<dyn MizePart + Send + Sync>) -> MizeResult<()> {
         self.part_names.lock().unwrap().push(part.name());
         self.parts.lock().unwrap().insert(part.name(), Some(part));
         Ok(())
@@ -852,5 +863,11 @@ impl Mize {
 impl fmt::Debug for Mize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Mize Instance with subs: {:?}", self.subs,)
+    }
+}
+
+impl Default for Mize {
+    fn default() -> Self {
+        Self::empty().unwrap()
     }
 }

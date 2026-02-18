@@ -23,18 +23,18 @@ serde_json = "1.0.117"
 tar = "0.4.44"
 umask = "2.1.0"
 #mize = { git = "https://github.com/c2vi/mize", default-features = false }
-mize = { path = "/home/me/work/mize", default-features = false, features = ["os-target"] }
+mize = { path = "../mize", default-features = false, features = ["os-target"] }
 
 # snix testing
 #snix-cli = { git = "https://git.snix.dev/snix/snix" }
-snix-tracing = { path = "./gitignore/snix/snix/tracing" }
-snix-cli = { path = "./gitignore/snix/snix/cli" }
-snix-store = { path = "./gitignore/snix/snix/store", features = [ "xp-composition-cli" ] }
-snix-castore = { path = "./gitignore/snix/snix/castore", features = ["xp-composition-cli", "xp-composition-url-refs" ] }
-snix-eval = { path = "./gitignore/snix/snix/eval" }
-snix-glue = { path = "./gitignore/snix/snix/glue" }
-snix-build = { path = "./gitignore/snix/snix/build" }
-nix-compat = { path = "./gitignore/snix/snix/nix-compat" }
+#snix-tracing = { path = "./gitignore/snix/snix/tracing" }
+#snix-cli = { path = "./gitignore/snix/snix/cli" }
+#snix-store = { path = "./gitignore/snix/snix/store", features = [ "xp-composition-cli" ] }
+#snix-castore = { path = "./gitignore/snix/snix/castore", features = ["xp-composition-cli", "xp-composition-url-refs" ] }
+#snix-eval = { path = "./gitignore/snix/snix/eval" }
+#snix-glue = { path = "./gitignore/snix/snix/glue" }
+#snix-build = { path = "./gitignore/snix/snix/build" }
+#nix-compat = { path = "./gitignore/snix/snix/nix-compat" }
 tokio = "1.45.0"
 tracing = "0.1.41"
 tracing-indicatif = "0.3.9"

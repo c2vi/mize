@@ -35,6 +35,7 @@ pub fn mize_part(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #input
+        use std::any::Any;
 
         // impl the default new impl
         impl mize::MizePartGenerated for #struct_name {
@@ -45,20 +46,21 @@ pub fn mize_part(attr: TokenStream, item: TokenStream) -> TokenStream {
               &mut self.mize
             }
             fn as_any_generated(&self) -> &dyn Any {
-              &self
+              self
             }
-            fn as_any_mut_generated(&mut self) -> &dyn Any {
-              &mut self
+            fn as_any_mut_generated(&mut self) -> &mut dyn Any {
+              self
             }
             fn into_any_generated(self: Box<Self>) -> Box<dyn Any> {
               self
             }
         }
+
         impl mize::MizePartCreateGenerated for #struct_name {
             fn create_generated(mize: Mize) -> Self {
                 Self {
                     mize,
-                    ... Default::default(),
+                    .. Default::default()
                 }
             }
         }

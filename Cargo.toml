@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
   "crates/mize",
-  "crates/vic",
-  "crates/ppc"
-, "crates/parts", "crates/macro_mize", "crates/mme"]
+  #"crates/vic",
+  "crates/ppc",
+  "crates/marts", 
+  "crates/macro_mize",
+  #"crates/mme",
+]

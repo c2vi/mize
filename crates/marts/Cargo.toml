@@ -1,0 +1,10 @@
+[package]
+name = "marts"
+description = "marts = mize_parts - parts collection of the Mize framework"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = "4.5.59"
+deno_core = "0.385.0"
+mize = { path = "../mize/" }

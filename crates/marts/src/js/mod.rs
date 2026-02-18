@@ -1,9 +1,9 @@
-use deno_core::FsModuleLoader;
 use deno_core::error::AnyError;
-use deno_core::{JsRuntime, ModuleSpecifier, PollEventLoopOptions, RuntimeOptions, extension, op2};
+use deno_core::FsModuleLoader;
+use deno_core::{extension, op2, JsRuntime, ModuleSpecifier, PollEventLoopOptions, RuntimeOptions};
 use mize::async_trait;
 use mize::instance::MizePartCreate;
-use mize::{Mize, MizePart, MizeResult, mize_part};
+use mize::{mize_part, Mize, MizePart, MizeResult};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -13,44 +13,61 @@ pub struct JsPart {
     js_runtime: JsRuntime,
 }
 
+// Define your custom ops for the "mize" object inside deno
+#[op2(fast)]
+fn op_mize_get_part(#[string] name: &str) {
+    println!("js wants the part {}", name);
+}
+
+#[op2]
+#[string]
+fn op_mize_get_config(#[string] key: &str) -> String {
+    format!("config_value_for_{}", key)
+}
+
+// Create an extension with your custom ops
+extension!(mize_ext, ops = [op_mize_get_part, op_mize_get_config]);
+
 impl MizePart for JsPart {
     fn init(&mut self, mize: &mut Mize) -> MizeResult<()> {
         println!("js part init");
         Ok(())
     }
 }
-impl MizePartCreate for JsPart {
-    fn create(mize: &mut Mize) -> Box<dyn MizePart> {
-        let mut js_runtime = JsRuntime::new(RuntimeOptions {
-            module_loader: Some(Rc::new(FsModuleLoader)),
-            extensions: vec![mize_ext::init_ops()],
-            ..Default::default()
-        });
-        let bootstrap_code = r#"
-             globalThis.mize = {
-                 get_part: (name) => Deno.core.ops.op_mize_get_part(name),
-                 get_config: (key) => Deno.core.ops.op_mize_get_config(key),
-                 version: "1.0.0",
-                 // Add more methods as needed
-             };
-         "#;
 
-        js_runtime.execute_script("[bootstrap]", bootstrap_code)?;
-        JsPart { mize, js_runtime }
-    }
+fn js(mize: &mut Mize) -> Box<dyn MizePart> {
+    let mut js_runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(Rc::new(FsModuleLoader)),
+        extensions: vec![mize_ext::init_ops()],
+        ..Default::default()
+    });
+    let bootstrap_code = r#"
+          globalThis.mize = {
+              get_part: (name) => Deno.core.ops.op_mize_get_part(name),
+              get_config: (key) => Deno.core.ops.op_mize_get_config(key),
+              version: "1.0.0",
+              // Add more methods as needed
+          };
+      "#;
+
+    js_runtime.execute_script("[bootstrap]", bootstrap_code)?;
+    JsPart { mize, js_runtime }
 }
 
 impl JsPart {
     pub fn part_from_js_file(
         &mut self,
         name: &'static str,
-        path: &str,
+        path: &'static str,
     ) -> Box<dyn MizePart + Send + Sync> {
         Box::new(PartFromJsFileAdapter {
             mize: self.mize.clone(),
             name,
             js_file: path,
         })
+    }
+    pub fn runtime(&mut self) -> &mut JsRuntime {
+        &mut self.js_runtime
     }
 }
 
@@ -70,7 +87,7 @@ impl MizePart for PartFromJsFileAdapter {
         self.name
     }
     async fn async_init(&mut self, mize: &mut Mize) -> MizeResult<()> {
-        let js: JsPart = mize.get_part_native("js");
+        let js = mize.get_part_native::<JsPart>("js")?;
         let path = self.js_file;
         let js_code = format!(
             r#"
@@ -96,13 +113,13 @@ impl MizePart for PartFromJsFileAdapter {
         );
 
         // Execute the script
-        let result = js.runtime.execute_script("[main]", js_code)?;
+        let result = js.runtime().execute_script("[main]", js_code)?;
 
         // Resolve the promise and run event loop
-        let resolved_value = js.runtime.resolve_value(result).await?;
+        let resolved_value = js.runtime().resolve_value(result).await?;
 
         // Run the event loop to completion
-        js.runtime
+        js.runtime()
             .run_event_loop(PollEventLoopOptions::default())
             .await?;
 
@@ -110,7 +127,7 @@ impl MizePart for PartFromJsFileAdapter {
         Ok(())
     }
     async fn async_run(&mut self, mize: &mut Mize) -> MizeResult<()> {
-        let js: JsPart = mize.get_part_native("js");
+        let js = mize.get_part_native::<JsPart>("js")?;
         let path = self.js_file;
         let js_code = format!(
             r#"
@@ -122,13 +139,13 @@ impl MizePart for PartFromJsFileAdapter {
             "#
         );
         // Execute the script
-        let result = js.runtime.execute_script("[main]", js_code)?;
+        let result = js.runtime().execute_script("[main]", js_code)?;
 
         // Resolve the promise and run event loop
         let resolved_value = js.runtime.resolve_value(result).await?;
 
         // Run the event loop to completion
-        js.runtime
+        js.runtime()
             .run_event_loop(PollEventLoopOptions::default())
             .await?;
 
@@ -136,33 +153,3 @@ impl MizePart for PartFromJsFileAdapter {
         Ok(())
     }
 }
-
-/*
-async fn run_js_file(file_path: &str) -> Result<(), AnyError> {
-    let main_module = deno_core::resolve_path(file_path, &std::env::current_dir()?)?;
-    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-        module_loader: Some(Rc::new(deno_core::FsModuleLoader)),
-        ..Default::default()
-    });
-
-    let mod_id = js_runtime.load_main_es_module(&main_module).await?;
-    let result = js_runtime.mod_evaluate(mod_id);
-    js_runtime.run_event_loop(Default::default()).await?;
-    result.await
-}
- */
-
-// Define your custom ops for the "mize" object inside deno
-#[op2(fast)]
-fn op_mize_get_part(#[string] name: &str) {
-    println!("js wants the part {}", name);
-}
-
-#[op2]
-#[string]
-fn op_mize_get_config(#[string] key: &str) -> String {
-    format!("config_value_for_{}", key)
-}
-
-// Create an extension with your custom ops
-extension!(mize_ext, ops = [op_mize_get_part, op_mize_get_config]);
