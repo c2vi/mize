@@ -17,7 +17,7 @@ module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, 
   # linux stuff
   // (lib.attrsets.optionalAttrs (hostSystem.kernel.name == "linux") {
       strictDeps = true;
-      cargoExtraArgs = "--bin mize --features os-target";
+      cargoExtraArgs = "--bin mize --features target-os";
       mizeInstallPhase = ''
         mkdir -p $out
         cp $build_dir/target/${hostSystem.nameRust}/$debugOrRelease/mize $out/
@@ -67,7 +67,7 @@ module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, 
     strictDeps = true;
     doCheck = false;
 
-    cargoExtraArgs = "--bin mize --features os-target";
+    cargoExtraArgs = "--bin mize --features target-os";
 
     CARGO_BUILD_TARGET = "${hostSystem.cpu.name}-pc-windows-gnu";
 
@@ -94,14 +94,14 @@ module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, 
       src = ./.;
       doCheck = false; # tests does not work in wasm
       CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-      cargoExtraArgs = "--features wasm-target --no-default-features";
+      cargoExtraArgs = "--features target-wasm --no-default-features";
       RUSTFLAGS="-C linker=wasm-ld";
       buildInputs = with pkgs; [ cargo-binutils lld ];
     });
 
     mizeBuildPhase = ''
       cd $build_dir
-      RUST_LOG=off wasm-pack build --target no-modules --dev --out-dir $out -- --features wasm-target --no-default-features
+      RUST_LOG=off wasm-pack build --target no-modules --dev --out-dir $out -- --features target-wasm --no-default-features
       cat $build_dir/src/platform/wasm/init.js >> $out/mize.js
     '';
     mizeInstallPhase = "";
@@ -113,7 +113,7 @@ module = { mkMizeRustModule, mkMizeRustShell, hostSystem, pkgsCross, pkgs, lib, 
     buildPhaseCargoCommand = ''
         mkdir -p $out/pkg
 
-        HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --target no-modules --out-dir $out/pkg --scope=c2vi -- --features wasm-target --no-default-features
+        HOME=$(mktemp -d fake-homeXXXX) wasm-pack build --target no-modules --out-dir $out/pkg --scope=c2vi -- --features target-wasm --no-default-features
     '';
 
     postInstall = ''

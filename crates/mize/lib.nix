@@ -269,7 +269,9 @@ rec {
     mkMizeRustShell = attrs: mkMizeModuleShell (attrs // {
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
+        pkgs.wasm-pack
         pkgs.pkg-config
+        pkgs.wasm-bindgen-cli
         (fenix.packages."x86_64-linux".combine [ 
           fenix.packages."x86_64-linux".latest.toolchain
           fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.latest.toolchain

@@ -246,7 +246,7 @@ impl Mize {
             )),
         };
 
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         {
             let instance_clone = instance.clone();
             let op_rx_clone = op_rx.clone();
@@ -259,7 +259,7 @@ impl Mize {
         }
 
         // set up async update "threads" when using wasm
-        #[cfg(feature = "wasm-target")]
+        #[cfg(feature = "target-wasm ")]
         {
             let instance_clone = instance.clone();
             let op_rx_clone = op_rx.clone();
@@ -275,14 +275,14 @@ impl Mize {
         //let msg_closure = move || msg_thread(op_rx, instance_clone);
         //instance.spawn("msg_thread", closure)?;
 
-        #[cfg(feature = "wasm-target")]
+        #[cfg(feature = "target-wasm ")]
         console_log!("before loading build time config");
 
         // load the config from build time
         let config = ItemData::from_toml(BUILD_TIME_CONFIG)?;
         instance.set_blocking("0", config);
 
-        #[cfg(feature = "wasm-target")]
+        #[cfg(feature = "target-wasm ")]
         console_log!("after loading build time config");
 
         return Ok(instance);
@@ -343,7 +343,7 @@ impl Mize {
         match self.get("0/config/load_modules")?.value_string() {
             Ok(modules_to_load) => {
                 for module in modules_to_load.split(" ") {
-                    #[cfg(feature = "wasm-target")]
+                    #[cfg(feature = "target-wasm ")]
                     console_log!("loading module in Instance::init() ... {}", module);
                     self.load_module(module)?;
                 }
@@ -695,10 +695,10 @@ impl Mize {
 
         *next_thread_id += 1;
 
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         thread::spawn(move || to_spawn());
 
-        #[cfg(feature = "wasm-target")]
+        #[cfg(feature = "target-wasm ")]
         {
             //console_log!("in instance::spawn with wasm target")
         }

@@ -1,0 +1,10 @@
+{
+  "id": "ppc",
+  "name": "PPC Obsidian Plugin",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "main": "main.js",
+  "author": "ppc",
+  "isDesktopOnly": true,
+  "description": "Turns Obsidian into a full on PPC client"
+}

@@ -22,10 +22,10 @@ pub trait Module {
 
 // console_log macro
 // that can be copied into other files for debugging purposes
-#[cfg(feature = "wasm-target")]
+#[cfg(feature = "target-wasm ")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(feature = "wasm-target")]
+#[cfg(feature = "target-wasm ")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]

@@ -7,13 +7,13 @@ use ciborium::Value as CborValue;
 use flume::{ Receiver, Sender };
 use ciborium_io::Read;
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 use wry::http::Request;
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 use wry::WebView;
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 use tao::event_loop::EventLoopProxy;
 
 #[cfg(feature = "wasm-target")]
@@ -54,7 +54,7 @@ use mize::MizeError;
 
 
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 pub fn mme_setup_weview_con_host(mme: &mut Mme, rx: Receiver<MizeMessage>, event_loop_proxy: EventLoopProxy<MizeMessage>) -> MizeResult<()> {
 
     let mize_clone = mme.mize.clone();

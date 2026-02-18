@@ -18,7 +18,7 @@ use wasm_bindgen::JsValue;
 #[cfg(feature = "wasm-target")]
 use web_sys::js_sys::Function;
 
-//#[cfg(feature = "os-target")]
+//#[cfg(feature = "target-os")]
 //use crate::implementors::qt_widget::QtWidgetSlot;
 #[cfg(feature = "qt")]
 use qt_core::{qs, QString, QTimer, SlotNoArgs};
@@ -142,7 +142,7 @@ impl Module for Mme {
 
         println!("MmeModule init");
 
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         {
             //self.mize.spawn("mme-main", || self.create_x_window());
             let mut cloned_self = self.clone();
@@ -212,7 +212,7 @@ impl Mme {
         Ok(())
     }
 
-    #[cfg(feature = "os-target")]
+    #[cfg(feature = "target-os")]
     pub fn create_x_window(&mut self) -> MizeResult<()> {
         use std::fs;
 
@@ -451,19 +451,19 @@ impl Mme {
 }
 
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 use tao::{
   event::{Event, WindowEvent},
   event_loop::{ControlFlow, EventLoop},
   window::WindowBuilder,
 };
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 use wry::{
   http::{self, header::CONTENT_TYPE, Request, Response},
   WebViewBuilder,
 };
 
-#[cfg(feature = "os-target")]
+#[cfg(feature = "target-os")]
 fn get_wry_response(request: Request<Vec<u8>>, mut mme: Mme) -> Result<http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
     use comandr::core::module;
     use mize::item::ItemData;

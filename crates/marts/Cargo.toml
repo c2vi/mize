@@ -5,6 +5,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = "4.5.59"
-deno_core = "0.385.0"
-mize = { path = "../mize/" }
+clap = { version = "4.5.59", optional = true }
+deno_core = { version = "0.385.0", optional = true }
+mize = { path = "../mize/", default-features = false }
+
+[features]
+default = ["target-os"]
+target-os = [ "clap", "mize/target-os" ]
+target-wasm = [ "mize/target-wasm" ]

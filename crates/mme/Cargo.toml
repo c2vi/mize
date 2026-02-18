@@ -10,12 +10,12 @@ wasm-opt = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "os-target" ]
+default = [ "target-os" ]
 qt = [ "slint", "cpp", "qt_core", "qt_gui", "qt_widgets", "comandr/qt" ]
 slint = [ "i-slint-backend-qt", "dep:slint", "slint-interpreter", "spin_on", "qt" ]
-os-target = [ "tao", "wry", "tracing-subscriber", "clap", "webkit2gtk", "mize/os-target", "glib" ]
-#os-target = [ "tao", "wry", "tracing-subscriber", "clap" ]
-wasm-target = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli", "web-sys", "comandr/wasm-target", "mize/wasm-target" ]
+target-os= [ "tao", "wry", "tracing-subscriber", "clap", "webkit2gtk", "mize/target-os", "glib" ]
+#target-os= [ "tao", "wry", "tracing-subscriber", "clap" ]
+target-wasm = [ "wasm-bindgen", "console_error_panic_hook", "wasm-bindgen-cli", "web-sys", "comandr/target-wasm ", "mize/wasm-target" ]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 
 [target.'cfg(unix)'.dependencies]

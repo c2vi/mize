@@ -55,7 +55,7 @@ let
     src = self;
     doCheck = false; # tests does not work in wasm
     CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-    cargoExtraArgs = "--features wasm-target --no-default-features";
+    cargoExtraArgs = "--features target-wasm --no-default-features";
     RUSTFLAGS="-C linker=wasm-ld";
     buildInputs = with pkgs; [ cargo-binutils lld ];
   });
@@ -109,7 +109,7 @@ in {
 
       one = craneLib.buildPackage {
         src = "${self}";
-        #cargoExtraArgs = "--bin mize --features os-target";
+        #cargoExtraArgs = "--bin mize --features target-os";
         cargoExtraArgs = "--bin mize";
         doCheck = false; # tests does not work in wasm
         CARGO_BUILD_TARGET = "x86_64-pc-windows-gnu";
@@ -123,13 +123,13 @@ in {
 
       default = osCrane.buildPackage {
         src = "${self}";
-        cargoExtraArgs = "--bin mize --features os-target";
+        cargoExtraArgs = "--bin mize --features target-os";
       };
 
       wasm = wasmCrane.buildPackage {
         src = "${self}";
         CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
-        cargoExtraArgs = "--bin mize --features wasm-target";
+        cargoExtraArgs = "--bin mize --features target-wasm ";
         doCheck = false;
       };
       inherit wasmArtifacts;
@@ -154,7 +154,7 @@ in {
           mkdir -p $out/pkg
 
           export HOME=$(mktemp -d fake-homeXXXX)
-          wasm-pack build --out-dir $out/pkg --scope=c2vi -- --no-default-features --features wasm-target
+          wasm-pack build --out-dir $out/pkg --scope=c2vi -- --no-default-features --features target-wasm 
         '';
 
         buildInputs = with pkgs; [ wasm-bindgen-cli binaryen wasm-pack wasmToolchain ];

@@ -18,5 +18,5 @@ nix build github:c2vi/mize#npmPackage
 
 ### without nix
 ```bash
-wasm-pack build -- --features wasm-target
+wasm-pack build -- --features target-wasm 
 ```

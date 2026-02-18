@@ -4,14 +4,24 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-mize = { path = "../mize" }
-marts = { path = "../marts/" }
-clap = "4.5.59"
+mize = { path = "../mize", default-features = false }
+marts = { path = "../marts/", default-features = false }
+clap = { version = "4.5.59", optional = true }
+js-sys = { version = "0.3.85", optional = true }
+wasm-bindgen = { version = "0.2.108", optional = true }
 
 [[bin]]
 name = "ppc"
 path = "src/platform/os/main.rs"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 default = ["target-os"]
-target-os = []
+target-os = [ "clap", "mize/target-os" ]
+target-obsidian = [ "js-sys", "wasm-bindgen", "mize/target-wasm", "marts/target-wasm" ]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

@@ -60,7 +60,7 @@ pub mod platform {
     #[cfg(feature = "wasm-target")]
     pub mod wasm;
 
-    #[cfg(feature = "os-target")]
+    #[cfg(feature = "target-os")]
     pub mod os;
 
     pub mod any {
@@ -68,35 +68,37 @@ pub mod platform {
         #[cfg(feature = "wasm-target")]
         pub use super::wasm::wasm_instance_init as instance_init;
 
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         pub use super::os::os_instance_init as instance_init;
 
-        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        #[cfg(not(any(feature = "target-os", feature = "target-wasm ")))]
         pub use super::super::instance_init;
 
         //////////// load_module
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         pub use super::os::load_module;
 
         #[cfg(feature = "wasm-target")]
         pub use super::wasm::load_module;
 
-        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        #[cfg(not(any(feature = "target-os", feature = "target-wasm ")))]
         pub use super::super::load_module;
 
         //////////// fetch_module
-        #[cfg(feature = "os-target")]
+        #[cfg(feature = "target-os")]
         pub use super::os::fetch_module;
 
         #[cfg(feature = "wasm-target")]
         pub use super::super::fetch_module;
 
-        #[cfg(not(any(feature = "os-target", feature = "wasm-target")))]
+        #[cfg(not(any(feature = "target-os", feature = "target-wasm ")))]
         pub use super::super::fetch_module;
     }
 }
 
-pub fn instance_init(instance: &mut core::instance::Mize) {}
+pub fn instance_init(instance: &mut core::instance::Mize) -> MizeResult<()> {
+    Ok(())
+}
 
 pub fn load_module(
     instance: &mut core::instance::Mize,
