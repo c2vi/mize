@@ -1,4 +1,3 @@
-import { Plugin, TFile, Vault, MetadataCache } from "obsidian";
 import { id, i, init, InstaQLEntity } from "@instantdb/react";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -8,8 +7,6 @@ import { Root, Content, Heading, List, ListItem, Text } from "mdast";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import wikiLinkPlugin from "@flowershow/remark-wiki-link";
-import wasmBinary from "./rust_dist/ppc_bg.wasm";
-import * as wasmNamespace from "./rust_dist/ppc";
 
 const OTASK_PROP_NAMES = ["short", "outcome", "priority"];
 const ACTION_PROP_NAMES = [];
@@ -20,118 +17,17 @@ const REMARK = unified()
   .use(remarkGfm)
   .use(remarkStringify, { bullet: "-" });
 
-export default class PPCObsidianPlugin extends Plugin {
-  async onload() {
-    // init mize from wasm
-    const wasmModule = await import("./rust_dist/ppc.js");
-    await wasmModule.default({ module_or_path: wasmBinary });
-    console.log("hoooo wasmModule:", wasmModule);
-    wasmModule.initSync();
+export function task_obsidian_otask_parse(mize: any) {
+  const obsidian_plugin = mize.get_part_native("obsidian");
 
-    //console.log("");
-    //const buffer = Uint8Array.from(atob(rustPlugin), (c) => c.charCodeAt(0));
-    wasmModule.obsidian_mize_entrypoint();
-
-    // Listen for file modifications in the vault
-    //this.registerEvent(
-    //this.app.vault.on("modify", (file: TFile) => {
-    //this.handleFileUpdate(file);
-    //})
-    //);
-
-    //this.registerView(
-    //"system-c2-app",
-    //(leaf) => new AppReactView(leaf, this)
-    //);
-
-    this.addCommand({
-      id: "app",
-      name: "Open SystemC2 App page",
-      callback: async () => {
-        const leaf = this.app.workspace.getLeaf(true);
-        await leaf.setViewState({
-          type: "system-c2-app",
-          active: true,
-        });
-        this.app.workspace.revealLeaf(leaf);
-      },
-    });
-
-    this.addCommand({
-      id: "full-parse",
-      name: "Parse all otask files into the db",
-      callback: async () => {
-        await full_parse();
-      },
-    });
-
-    //full_parse(this.db)
-  }
-
-  async handleFileUpdate(file: TFile) {
-    if (!(file instanceof TFile) || file.extension !== "md") {
-      return; // only care about markdown files
-    }
-
-    const metadata = this.app.metadataCache.getFileCache(file);
-
-    // Example: check if the file has a specific tag
-    if (metadata?.frontmatter?.tags?.includes("t/otask")) {
-      this.parseOtask(file);
-    }
-  }
-
-  async parseOtask(file: TFile) {
-    if (!this.isLoggedIn()) {
-      return;
-    }
-
-    const isRrootOtask = file.basename === "my-projects";
-
-    if (isRrootOtask) {
-      return;
-    }
-  }
-
-  async isLoggedIn() {
-    const user = this.db.getAuth();
-    user;
-  }
-
-  onunload() {
-    this.app.workspace.detachLeavesOfType("system-c2-app");
-  }
-}
-
-let OTASK_PARSE_QUEUE = [];
-
-let OTASK_LIST = [];
-
-let DBG = false;
-
-function dbg() {
-  if (DBG) {
-    console.log(arguments);
-  }
-}
-
-function queue_otasks_from_list_item(listItem, otask_path, priority = 0) {
-  OTASK_PARSE_QUEUE.push({
-    listItem,
-    otask_path,
-    priority,
+  obsidian_plugin.addCommand({
+    id: "full-parse",
+    name: "Parse all otask files into the db",
+    callback: async () => {
+      await full_parse();
+    },
   });
 }
-
-function queue_otasks_from_file(file, otask_path, priority = 0) {
-  OTASK_PARSE_QUEUE.push({
-    file,
-    otask_path,
-    priority,
-  });
-}
-
-// parsing helper functions
 
 async function full_parse() {
   console.log("full parse.......................... yay");
@@ -180,6 +76,34 @@ async function full_parse() {
 
   render_sub0_file(OTASK_LIST);
 }
+
+let OTASK_PARSE_QUEUE = [];
+let OTASK_LIST = [];
+let DBG = false;
+
+function dbg() {
+  if (DBG) {
+    console.log(arguments);
+  }
+}
+
+function queue_otasks_from_list_item(listItem, otask_path, priority = 0) {
+  OTASK_PARSE_QUEUE.push({
+    listItem,
+    otask_path,
+    priority,
+  });
+}
+
+function queue_otasks_from_file(file, otask_path, priority = 0) {
+  OTASK_PARSE_QUEUE.push({
+    file,
+    otask_path,
+    priority,
+  });
+}
+
+// parsing helper functions
 
 async function render_sub0_file(otasks) {
   const sub0_file = app.vault.getAbstractFileByPath("private/sub0-tasks.md");

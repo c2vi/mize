@@ -4,7 +4,9 @@ target
 # for nix
 result
 dist
+rust_dist
 node_modules
+.env
 
 # I put testing stuff for this projekt that I don't want to push to github into a folder called gitignore
 gitignore

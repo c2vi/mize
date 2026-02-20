@@ -16,7 +16,7 @@ path = "src/platform/os/main.rs"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-path = "src/lib.rs"
+path = "lib.rs"
 
 [features]
 default = ["target-os"]

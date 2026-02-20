@@ -1,0 +1,19 @@
+// Project tasks configuration. See https://zed.dev/docs/tasks for documentation.
+//
+// Example:
+[
+  {
+    "label": "obsidian dev",
+    "command": "deno run --config ./packages/ppc/platform/obsidian/deno.json build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "hide": "on_success",
+  },
+  {
+    "label": "obsidian prod",
+    "command": "deno run --config ./packages/ppc/platform/obsidian/deno.json build && mkdir -p $PPC_DEV_OBSIDIAN_PROD_VAULT_PLUGINS_DIR/ppc && cp -r ./packages/ppc/platform/obsidian/dist/* $PPC_DEV_OBSIDIAN_PROD_VAULT_PLUGINS_DIR/ppc",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "hide": "on_success",
+  },
+]

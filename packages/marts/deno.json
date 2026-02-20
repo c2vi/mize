@@ -1,0 +1,7 @@
+{
+  "name": "@ppc/marts",
+  "imports": {},
+  "exports": {
+    ".": "./index.ts"
+  }
+}

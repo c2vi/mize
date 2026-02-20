@@ -1,0 +1,23 @@
+{
+  "name": "@ppc/obsidian-plugin",
+  "tasks": {
+    "build_rust": "wasm-pack -vvvvv build -d src/platform/obsidian/rust_dist --target web --no-default-features --features target-obsidian",
+    "build": "deno run -A build_rust && mkdir -p dist && touch dist/.hotreload && cp manifest.json dist && deno -A esbuild.config.mjs production",
+    "dev": ""
+  },
+  "imports": {
+    "@deno/esbuild-plugin": "jsr:@deno/esbuild-plugin@^1.2.1",
+    "@flowershow/remark-wiki-link": "npm:@flowershow/remark-wiki-link@^3.4.0",
+    "builtin-modules": "npm:builtin-modules@^5.0.0",
+    "esbuild": "npm:esbuild@^0.27.3",
+    "mdast": "npm:mdast@^3.0.0",
+    "obsidian": "npm:obsidian@^1.12.2",
+    "remark-frontmatter": "npm:remark-frontmatter@^5.0.0",
+    "remark-gfm": "npm:remark-gfm@^4.0.1",
+    "remark-parse": "npm:remark-parse@^11.0.0",
+    "remark-stringify": "npm:remark-stringify@^11.0.0",
+    "typescript": "npm:typescript@^5.9.3",
+    "unified": "npm:unified@^11.0.5",
+    "unist-util-visit": "npm:unist-util-visit@^5.1.0"
+  }
+}

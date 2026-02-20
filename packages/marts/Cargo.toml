@@ -13,3 +13,6 @@ mize = { path = "../mize/", default-features = false }
 default = ["target-os"]
 target-os = [ "clap", "mize/target-os" ]
 target-wasm = [ "mize/target-wasm" ]
+
+[lib]
+path = "lib.rs"

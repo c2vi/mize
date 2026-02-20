@@ -56,35 +56,37 @@ static BUILD_TIME_CONFIG: &str = include_str!(std::env!("MIZE_BUILD_CONFIG"));
 #[derive(Clone)]
 pub struct Mize {
     // a bit a lot of Mutexes isn't it???
-    pub store: Arc<Mutex<Box<dyn Store>>>,
+    pub(crate) store: Arc<Mutex<Box<dyn Store>>>,
     connections: Arc<Mutex<Vec<Connection>>>,
     next_con_id: Arc<Mutex<u64>>,
     subs: Arc<Mutex<HashMap<MizeId, Vec<Subscription>>>>,
-    pub modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send>>>>,
-    pub id_pool: Arc<Mutex<VecStringPool>>,
-    pub namespace_pool: Arc<Mutex<StringPool>>,
+    pub(crate) modules: Arc<Mutex<HashMap<String, Box<dyn Module + Sync + Send>>>>,
+    pub(crate) id_pool: Arc<Mutex<VecStringPool>>,
+    pub(crate) namespace_pool: Arc<Mutex<StringPool>>,
 
     pub(crate) parts: Arc<Mutex<HashMap<&'static str, Option<Box<dyn MizePart + Sync + Send>>>>>,
 
     part_names: Arc<Mutex<Vec<&'static str>>>,
 
-    pub config_opts: Arc<Mutex<HashMap<String, ConfigOpt>>>,
+    pub(crate) config_opts: Arc<Mutex<HashMap<String, ConfigOpt>>>,
 
     // the namespace the instance operates in
-    pub namespace: Arc<Mutex<Namespace>>,
+    pub(crate) namespace: Arc<Mutex<Namespace>>,
 
     // the namespace of the instance itself
     // TODO: set to a random uuid
-    pub self_namespace: Arc<Mutex<Namespace>>,
-    pub op_tx: Sender<Operation>,
+    pub(crate) self_namespace: Arc<Mutex<Namespace>>,
+    pub(crate) op_tx: Sender<Operation>,
     threads: Arc<Mutex<Vec<(u32, String)>>>,
     next_thread_id: Arc<Mutex<u32>>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
 
     #[cfg(feature = "async")]
-    pub runtime: Arc<Mutex<Runtime>>,
+    pub(crate) runtime: Arc<Mutex<Runtime>>,
 }
+
+// the public Mize API
 
 pub struct InstanceRef {
     inner: Arc<Mutex<Mize>>,

@@ -1,0 +1,27 @@
+{
+  "name": "marts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.1",
+  "dependencies": {
+    "@flowershow/remark-wiki-link": "^3.4.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.27.3",
+    "mdast": "^3.0.0",
+    "obsidian": "^1.12.2",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "typescript": "^5.9.3",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
+  }
+}

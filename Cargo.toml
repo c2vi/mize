@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/mize",
-  #"crates/vic",
-  "crates/ppc",
-  "crates/marts", 
-  "crates/macro_mize",
-  #"crates/mme",
+  "packages/mize",
+  #"packages/vic",
+  "packages/ppc",
+  "packages/marts", 
+  "packages/ac_mize_macros",
+  #"packages/mme",
 ]

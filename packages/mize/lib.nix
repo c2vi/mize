@@ -270,6 +270,7 @@ rec {
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
         pkgs.wasm-pack
+        pkgs.deno
         pkgs.pkg-config
         pkgs.wasm-bindgen-cli
         (fenix.packages."x86_64-linux".combine [ 
