@@ -16,6 +16,8 @@ fn main() {
 #[cfg(feature = "target-os")]
 fn os_main(mize: &mut Mize) -> MizeResult<()> {
     marts::cli(mize)?;
+    marts::js(mize)?;
+    marts::habitica(mize)?;
 
     let mut cli = mize.get_part_native::<marts::CliPart>("cli")?;
 

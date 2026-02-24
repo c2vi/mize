@@ -8,3 +8,8 @@ export class Mize {
 }
 
 type MizeError = string;
+
+export class Cli {
+  constructor(mize: Mize) {}
+  async sub_command(name: string, cmd: any): Promise<void> {}
+}

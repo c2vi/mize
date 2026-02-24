@@ -9,26 +9,53 @@ pub struct CliPart {
     mize: Mize,
     cmd: Option<Command>,
     actions: HashMap<String, fn(&ArgMatches) -> MizeResult<()>>,
+    parsers: Option<Vec<Box<dyn (FnOnce(Mize, Vec<String>) -> MizeResult<()>) + Send + Sync>>>,
 }
 
 pub fn cli(mize: &mut Mize) -> MizeResult<()> {
+    let command = Command::new("marts-cli").allow_external_subcommands(true);
     let cli_part = CliPart {
         mize: mize.clone(),
-        cmd: Some(Command::new("marts-cli")),
+        cmd: Some(command),
         actions: HashMap::new(),
+        parsers: Some(Vec::new()),
     };
 
-    mize.register_part(Box::new(cli_part))
+    mize.add_part(Box::new(cli_part))
 }
 
 impl MizePart for CliPart {
     fn init(&mut self, _mize: &mut Mize) -> MizeResult<()> {
         Ok(())
     }
-    fn run(&mut self, _mize: &mut Mize) -> MizeResult<()> {
+    fn run(&mut self, mize: &mut Mize) -> MizeResult<()> {
         let matches = self.cmd.take().unwrap().get_matches();
-        let sub_cmd = matches.subcommand_name().unwrap();
-        let action = self.actions.get(sub_cmd).unwrap();
+        let sub_cmd = match matches.subcommand_name() {
+            Some(sub_cmd) => sub_cmd,
+            None => {
+                println!("No subcommand provided");
+                return Ok(());
+            }
+        };
+        let action = match self.actions.get(sub_cmd) {
+            Some(action) => action,
+            None => {
+                // external parsers
+                for parser in self.parsers.take().unwrap() {
+                    parser(
+                        mize.clone(),
+                        matches
+                            .subcommand_matches(sub_cmd)
+                            .unwrap()
+                            .get_many::<String>("")
+                            .unwrap()
+                            .map(|s| s.to_string())
+                            .collect::<Vec<String>>(),
+                    )?;
+                }
+                return Ok(());
+            }
+        };
         action(matches.subcommand_matches(sub_cmd).unwrap())?;
         Ok(())
     }
@@ -48,6 +75,15 @@ impl CliPart {
         self.actions.insert(name, action);
         self.cmd = Some(cmd);
         self.cmd.as_mut().unwrap()
+    }
+    pub fn add_sub_parser<
+        T: FnOnce(Mize, Vec<String>) -> MizeResult<()> + Send + Sync + 'static,
+    >(
+        &mut self,
+        parser: T,
+    ) -> MizeResult<()> {
+        self.parsers.as_mut().unwrap().push(Box::new(parser));
+        Ok(())
     }
     pub fn with_cmd(
         &mut self,

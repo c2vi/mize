@@ -315,6 +315,9 @@ impl Mize {
             None => Err(mize_err!("Part not found or currently taken")),
         }
     }
+    pub fn has_part(&mut self, name: &str) -> bool {
+        self.parts.lock().unwrap().contains_key(name)
+    }
     pub fn add_part(&mut self, part: Box<dyn MizePart + Send + Sync>) -> MizeResult<()> {
         self.part_names.lock().unwrap().push(part.name());
         self.parts.lock().unwrap().insert(part.name(), Some(part));
