@@ -1,32 +1,30 @@
 use deno_core::error::AnyError;
-use deno_core::FsModuleLoader;
+use deno_core::url::Url;
 use deno_core::{extension, op2, JsRuntime, ModuleSpecifier, PollEventLoopOptions, RuntimeOptions};
+use deno_core::{FastStaticString, FsModuleLoader};
 use mize::async_trait;
 use mize::instance::MizePartCreate;
 use mize::{mize_part, Mize, MizePart, MizeResult};
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::str::FromStr;
+use tokio::runtime::Builder;
+use tokio::task::{spawn_local, LocalSet};
+
+mod glue_deno;
 
 #[mize_part("js")]
+#[derive(Default)]
 pub struct JsPart {
     mize: Mize,
-    js_runtime: JsRuntime,
+    closure_sender: Option<flume::Sender<Box<dyn FnOnce(&mut JsRuntime) -> MizeResult<()> + Send>>>,
+    async_closure_sender: Option<flume::Sender<BoxClosure>>,
 }
 
-// Define your custom ops for the "mize" object inside deno
-#[op2(fast)]
-fn op_mize_get_part(#[string] name: &str) {
-    println!("js wants the part {}", name);
-}
-
-#[op2]
-#[string]
-fn op_mize_get_config(#[string] key: &str) -> String {
-    format!("config_value_for_{}", key)
-}
-
-// Create an extension with your custom ops
-extension!(mize_ext, ops = [op_mize_get_part, op_mize_get_config]);
+pub type BoxFuture<'a> = Pin<Box<dyn Future<Output = MizeResult<()>> + 'a>>;
+pub type BoxClosure = Box<dyn for<'a> FnOnce(&'a mut JsRuntime) -> BoxFuture<'a> + Send + 'static>;
 
 impl MizePart for JsPart {
     fn init(&mut self, mize: &mut Mize) -> MizeResult<()> {
@@ -35,26 +33,44 @@ impl MizePart for JsPart {
     }
 }
 
-fn js(mize: &mut Mize) -> Box<dyn MizePart> {
-    let mut js_runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(Rc::new(FsModuleLoader)),
-        extensions: vec![mize_ext::init_ops()],
-        ..Default::default()
-    });
-    let bootstrap_code = r#"
-          globalThis.mize = {
-              get_part: (name) => Deno.core.ops.op_mize_get_part(name),
-              get_config: (key) => Deno.core.ops.op_mize_get_config(key),
-              version: "1.0.0",
-              // Add more methods as needed
-          };
-      "#;
+pub fn js(mize: &mut Mize) -> MizeResult<()> {
+    let (closure_sender, closure_receiver) =
+        flume::unbounded::<Box<dyn FnOnce(&mut JsRuntime) -> MizeResult<()> + Send>>();
+    let (async_closure_sender, async_closure_receiver) = flume::unbounded::<BoxClosure>();
+    let mize_clone = mize.clone();
 
-    js_runtime.execute_script("[bootstrap]", bootstrap_code)?;
-    JsPart { mize, js_runtime }
+    // the thread which will run any js
+    mize.spawn("js_runtime_thread", || {
+        js_runtime_thread(mize_clone, closure_receiver, async_closure_receiver)
+    })?;
+
+    mize.add_part(Box::new(JsPart {
+        mize: mize.clone(),
+        closure_sender: Some(closure_sender),
+        async_closure_sender: Some(async_closure_sender),
+    }))
+}
+
+pub fn part_from_file(
+    mize: &mut Mize,
+    name: &'static str,
+    code: FastStaticString,
+) -> MizeResult<()> {
+    let mut js = mize.get_part_native::<JsPart>("js")?;
+    js.with_runtime_async(move |runtime: &mut JsRuntime| {
+        let module_spec = ModuleSpecifier::from_str(name).unwrap();
+        return Box::pin(async move {
+            runtime
+                .load_side_es_module_from_code(&module_spec, code)
+                .await;
+            Ok(())
+        });
+    });
+    Ok(())
 }
 
 impl JsPart {
+    /*
     pub fn part_from_js_file(
         &mut self,
         name: &'static str,
@@ -66,12 +82,32 @@ impl JsPart {
             js_file: path,
         })
     }
-    pub fn runtime(&mut self) -> &mut JsRuntime {
-        &mut self.js_runtime
+    */
+    pub fn with_runtime<T: FnOnce(&mut JsRuntime) -> MizeResult<()> + Send + 'static>(
+        &mut self,
+        func: T,
+    ) {
+        self.closure_sender
+            .as_mut()
+            .unwrap()
+            .send(Box::new(func))
+            .unwrap();
+    }
+    pub fn with_runtime_async<F>(&mut self, func: F)
+    where
+        F: for<'a> FnOnce(&'a mut JsRuntime) -> BoxFuture<'a> + Send + 'static,
+    {
+        self.async_closure_sender
+            .as_mut()
+            .unwrap()
+            .send(Box::new(func))
+            .unwrap();
     }
 }
 
+/*
 #[mize_part]
+#[derive(Default)]
 struct PartFromJsFileAdapter {
     mize: Mize,
     name: &'static str,
@@ -92,22 +128,22 @@ impl MizePart for PartFromJsFileAdapter {
         let js_code = format!(
             r#"
              import {{ opts, deps, create }} from "{path}";
-             
-             const isPromise = (value) => {
+
+             const isPromise = (value) => {{
                return !!value && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function';
-             };
-             
+             }};
+
              // Call the async function
              let create_result = create(mize);
-             if (isPromise(create_result)) {
+             if (isPromise(create_result)) {{
                  create_result = await create_result;
-             }
-             const result = {
+             }}
+             const result = {{
                  opts: opts(mize),
                  deps: deps(mize),
                  create: create_result,
-             };
-             
+             }};
+
              result;
          "#
         );
@@ -132,9 +168,9 @@ impl MizePart for PartFromJsFileAdapter {
         let js_code = format!(
             r#"
               import {{ run }} from "{path}";
-              
+
               const result = run()
-              
+
               result;
             "#
         );
@@ -142,7 +178,7 @@ impl MizePart for PartFromJsFileAdapter {
         let result = js.runtime().execute_script("[main]", js_code)?;
 
         // Resolve the promise and run event loop
-        let resolved_value = js.runtime.resolve_value(result).await?;
+        let resolved_value = js.runtime().resolve_value(result).await?;
 
         // Run the event loop to completion
         js.runtime()
@@ -152,4 +188,38 @@ impl MizePart for PartFromJsFileAdapter {
         println!("Running of part {} completed successfully", self.name());
         Ok(())
     }
+}
+*/
+
+fn js_runtime_thread(
+    mize: Mize,
+    closure_receiver: flume::Receiver<Box<dyn FnOnce(&mut JsRuntime) -> MizeResult<()> + Send>>,
+    async_closure_receiver: flume::Receiver<BoxClosure>,
+) -> MizeResult<()> {
+    let mut js_runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(Rc::new(FsModuleLoader)),
+        extensions: vec![glue_deno::my_extension::init(mize.clone())],
+        ..Default::default()
+    });
+
+    let poll_opts = PollEventLoopOptions::default();
+
+    let tokio_runtime = Builder::new_current_thread().enable_all().build().unwrap();
+
+    let local = LocalSet::new();
+    local.block_on(&tokio_runtime, async move {
+        loop {
+            // Drain queued closures quickly (no await here if possible)
+            if let Ok(func) = closure_receiver.recv_async().await {
+                if let Err(e) = func(&mut js_runtime) {
+                    mize.report_err(e);
+                }
+            }
+
+            // Drive JS one tick
+            let _ = futures::future::poll_fn(|cx| js_runtime.poll_event_loop(cx, poll_opts)).await;
+        }
+    });
+
+    Ok(())
 }

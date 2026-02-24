@@ -3,6 +3,7 @@ use colored::Colorize;
 use core::fmt;
 use flume::{bounded, unbounded, Receiver, Sender};
 use interner::shared::{StringPool, VecStringPool};
+use mize_macros::mize_part;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fs::create_dir;
@@ -859,6 +860,38 @@ impl Mize {
             mize: self.clone(),
             part: Some(*concrete_part),
         })
+    }
+    pub fn add_name_only_part(&mut self, name: &'static str) {
+        let part = NameOnlyPart {
+            mize: self.clone(),
+            name,
+        };
+        self.add_part(Box::new(part));
+    }
+}
+
+#[derive(Default)]
+struct NameOnlyPart {
+    mize: Mize,
+    name: &'static str,
+}
+
+impl MizePart for NameOnlyPart {}
+impl MizePartGenerated for NameOnlyPart {
+    fn as_any_generated(&self) -> &dyn Any {
+        self.as_any()
+    }
+    fn as_any_mut_generated(&mut self) -> &mut dyn Any {
+        self.as_any_mut()
+    }
+    fn get_mize_generated(&mut self) -> &mut Mize {
+        &mut self.mize
+    }
+    fn into_any_generated(self: Box<Self>) -> Box<dyn Any> {
+        self.into_any()
+    }
+    fn name_generated(&self) -> &'static str {
+        self.name
     }
 }
 

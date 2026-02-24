@@ -35,7 +35,6 @@ pub fn mize_part(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #input
-        use std::any::Any;
 
         // impl the default new impl
         impl mize::MizePartGenerated for #struct_name {
@@ -45,13 +44,13 @@ pub fn mize_part(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn get_mize_generated(&mut self) -> &mut Mize {
               &mut self.mize
             }
-            fn as_any_generated(&self) -> &dyn Any {
+            fn as_any_generated(&self) -> &dyn std::any::Any {
               self
             }
-            fn as_any_mut_generated(&mut self) -> &mut dyn Any {
+            fn as_any_mut_generated(&mut self) -> &mut dyn std::any::Any {
               self
             }
-            fn into_any_generated(self: Box<Self>) -> Box<dyn Any> {
+            fn into_any_generated(self: Box<Self>) -> Box<dyn std::any::Any> {
               self
             }
         }
@@ -64,6 +63,22 @@ pub fn mize_part(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
         }
+
+        /*
+        impl std::ops::Deref for mize::MizePartGuard<#struct_name> {
+            type Target = #struct_name;
+
+            fn deref(&self) -> &Self::Target {
+                &*self.part.as_ref().unwrap()
+            }
+        }
+
+        impl std::ops::DerefMut for mize::MizePartGuard<#struct_name> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut *self.part.as_mut().unwrap()
+            }
+        }
+        */
     };
 
     TokenStream::from(expanded)

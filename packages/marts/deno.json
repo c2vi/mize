@@ -2,6 +2,10 @@
   "name": "@ppc/marts",
   "imports": {},
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "stub_deno": "./js/stub_deno.ts"
+  },
+  "tasks": {
+    "build": "deno bundle -o ./deno_dist/habitica.js ./habitica.ts"
   }
 }
