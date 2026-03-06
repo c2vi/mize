@@ -270,9 +270,23 @@ rec {
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
         pkgs.wasm-pack
+        pkgs.dioxus-cli
+        pkgs.spacetimedb
         pkgs.deno
         pkgs.pkg-config
-        pkgs.wasm-bindgen-cli
+        (pkgs.buildWasmBindgenCli rec {
+          src = pkgs.fetchCrate {
+            pname = "wasm-bindgen-cli";
+            version = "0.2.114";
+            hash = "sha256-xrCym+rFY6EUQFWyWl6OPA+LtftpUAE5pIaElAIVqW0=";
+          };
+        
+          cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+            inherit src;
+            inherit (src) pname version;
+            hash = "sha256-Z8+dUXPQq7S+Q7DWNr2Y9d8GMuEdSnq00quUR0wDNPM=";
+          };
+        })
         (fenix.packages."x86_64-linux".combine [ 
           fenix.packages."x86_64-linux".latest.toolchain
           fenix.packages."x86_64-linux".targets.wasm32-unknown-unknown.latest.toolchain

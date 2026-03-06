@@ -1,12 +1,14 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@deno/esbuild-plugin@*": "1.2.1",
     "jsr:@deno/esbuild-plugin@^1.2.1": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.12",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.1": "1.1.4",
     "npm:@flowershow/remark-wiki-link@^3.4.0": "3.4.0",
     "npm:builtin-modules@5": "5.0.0",
+    "npm:esbuild@*": "0.25.12",
     "npm:esbuild@~0.25.5": "0.25.12",
     "npm:esbuild@~0.27.3": "0.27.3",
     "npm:mdast@3": "3.0.0",

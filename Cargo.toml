@@ -1,10 +1,9 @@
 [workspace]
-resolver = "2"
 members = [
-  "packages/mize",
-  #"packages/vic",
-  "packages/ppc",
-  "packages/marts", 
-  "packages/ac_mize_macros",
-  #"packages/mme",
+    "packages/ac_mize_macros",
+    "packages/marts",
+    "packages/mize",
+    "packages/ppc",
+    "test", "test",
 ]
+resolver = "2"

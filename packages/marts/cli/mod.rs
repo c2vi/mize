@@ -8,8 +8,12 @@ use mize::{mize_part, Mize, MizePart, MizeResult};
 pub struct CliPart {
     mize: Mize,
     cmd: Option<Command>,
-    actions: HashMap<String, fn(&ArgMatches) -> MizeResult<()>>,
-    parsers: Option<Vec<Box<dyn (FnOnce(Mize, Vec<String>) -> MizeResult<()>) + Send + Sync>>>,
+    actions: HashMap<
+        String,
+        Box<dyn FnOnce(&ArgMatches, Mize) -> MizeResult<()> + Send + Sync + 'static>,
+    >,
+    parsers:
+        Option<Vec<Box<dyn FnOnce(Mize, Vec<String>) -> MizeResult<()> + Send + Sync + 'static>>>,
 }
 
 pub fn cli(mize: &mut Mize) -> MizeResult<()> {
@@ -37,7 +41,7 @@ impl MizePart for CliPart {
                 return Ok(());
             }
         };
-        let action = match self.actions.get(sub_cmd) {
+        let action = match self.actions.remove(sub_cmd) {
             Some(action) => action,
             None => {
                 // external parsers
@@ -56,7 +60,7 @@ impl MizePart for CliPart {
                 return Ok(());
             }
         };
-        action(matches.subcommand_matches(sub_cmd).unwrap())?;
+        action(matches.subcommand_matches(sub_cmd).unwrap(), mize.clone())?;
         Ok(())
     }
     fn opts(&self, mize: &mut Mize) {
@@ -65,14 +69,14 @@ impl MizePart for CliPart {
 }
 
 impl CliPart {
-    pub fn subcommand(
+    pub fn subcommand<T: FnOnce(&ArgMatches, Mize) -> MizeResult<()> + Send + Sync + 'static>(
         &mut self,
         subcmd: Command,
-        action: fn(sub_matches: &ArgMatches) -> MizeResult<()>,
+        action: T,
     ) -> &mut Command {
         let name = subcmd.get_name().to_string();
         let cmd = self.cmd.take().unwrap().subcommand(subcmd);
-        self.actions.insert(name, action);
+        self.actions.insert(name, Box::new(action));
         self.cmd = Some(cmd);
         self.cmd.as_mut().unwrap()
     }

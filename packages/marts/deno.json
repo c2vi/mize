@@ -6,6 +6,6 @@
     "stub_deno": "./js/stub_deno.ts"
   },
   "tasks": {
-    "build": "deno bundle -o ./deno_dist/habitica.js ./habitica.ts"
+    "build": "deno bundle -o ./deno_dist/habitica.js ./habitica.ts && deno -A ./esbuild.config.mjs"
   }
 }

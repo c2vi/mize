@@ -5,6 +5,7 @@ target
 result
 dist
 rust_dist
+deno_dist
 node_modules
 .env
 

@@ -58,7 +58,7 @@ async fn connect_async(mut instance: Mize, store_path: PathBuf) -> MizeResult<u6
     let conn_id = instance.new_connection(send_tx)?;
 
     let cloned_instance = instance.clone();
-    instance.spawn("incomming", move || {
+    instance.spawn_background("incomming", move || {
         let result = unix_incomming(unix_read, cloned_instance, conn_id);
         // if unix incomming fails, close the connection
         if let Err(err) = result {
@@ -68,7 +68,7 @@ async fn connect_async(mut instance: Mize, store_path: PathBuf) -> MizeResult<u6
     });
 
     let outgoing_cloned_instance = instance.clone();
-    instance.spawn("outgoing", move || {
+    instance.spawn_background("outgoing", move || {
         let result = unix_outgoing(unix_write, send_rx, outgoing_cloned_instance, conn_id);
         // if writing fails, close this connection
         if let Err(err) = result {
@@ -108,7 +108,7 @@ async fn unix_listen(listener: UnixListener, mut instance: Mize) -> MizeResult<(
 
         let conn_id = instance.new_connection(send_tx)?;
         let cloned_instance = instance.clone();
-        instance.spawn("incomming", move || {
+        instance.spawn_background("incomming", move || {
             let result = unix_incomming(unix_read, cloned_instance, conn_id);
             // if unix incomming fails, close the connection
             if let Err(err) = result {
@@ -118,7 +118,7 @@ async fn unix_listen(listener: UnixListener, mut instance: Mize) -> MizeResult<(
         });
 
         let outgoing_cloned_instance = instance.clone();
-        instance.spawn("outgoing", move || {
+        instance.spawn_background("outgoing", move || {
             let result = unix_outgoing(unix_write, send_rx, outgoing_cloned_instance, conn_id);
             // if writing fails, close this connection
             if let Err(err) = result {

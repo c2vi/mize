@@ -16,7 +16,7 @@ fn main() {
 #[cfg(feature = "target-os")]
 fn os_main(mize: &mut Mize) -> MizeResult<()> {
     marts::cli(mize)?;
-    marts::js(mize)?;
+    //marts::js(mize)?;
     marts::habitica(mize)?;
 
     let mut cli = mize.get_part_native::<marts::CliPart>("cli")?;
@@ -29,7 +29,7 @@ fn os_main(mize: &mut Mize) -> MizeResult<()> {
             .about("the ppc desktop program"))
     })?;
 
-    cli.subcommand(Command::new("test"), |_| {
+    cli.subcommand(Command::new("test"), |_, _| {
         println!("test ppc...");
         Ok(())
     });

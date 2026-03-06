@@ -78,7 +78,7 @@ pub struct Mize {
     // TODO: set to a random uuid
     pub(crate) self_namespace: Arc<Mutex<Namespace>>,
     pub(crate) op_tx: Sender<Operation>,
-    threads: Arc<Mutex<Vec<(u32, String)>>>,
+    threads: Arc<Mutex<Vec<(u32, String, Option<JoinHandle<MizeResult<()>>>)>>>,
     next_thread_id: Arc<Mutex<u32>>,
     give_msg_wait: Arc<Mutex<HashMap<MizeId, Vec<Sender<ItemData>>>>>,
     create_msg_wait: Arc<Mutex<Option<Sender<MizeId>>>>,
@@ -254,11 +254,11 @@ impl Mize {
             let instance_clone = instance.clone();
             let op_rx_clone = op_rx.clone();
             let closure = move || updater_thread(op_rx_clone, &instance_clone);
-            instance.spawn("updater_thread", closure)?;
+            instance.spawn_background("updater_thread", closure)?;
 
             let instance_clone_two = instance.clone();
             let closure_two = move || updater_thread(op_rx, &instance_clone_two);
-            instance.spawn("updater_thread", closure_two)?;
+            instance.spawn_background("updater_thread", closure_two)?;
         }
 
         // set up async update "threads" when using wasm
@@ -569,7 +569,7 @@ impl Mize {
 
     pub fn add_listener<T: ConnListener + 'static>(&mut self, listener: T) -> MizeResult<()> {
         let mut instance_clone = self.clone();
-        self.spawn("some_listener", move || listener.listen(instance_clone));
+        self.spawn_background("some_listener", move || listener.listen(instance_clone));
         Ok(())
     }
 
@@ -667,15 +667,65 @@ impl Mize {
         ));
     }
 
-    pub fn spawn(
+    pub fn spawn_and_wait(
+        &mut self,
+        name: &str,
+        func: impl FnOnce() -> MizeResult<()> + Send + 'static,
+    ) -> MizeResult<()> {
+        let mize_clone = self.clone();
+        let mut threads_inner = self.threads.lock()?;
+        let mut next_thread_id = self.next_thread_id.lock()?;
+
+        let my_thread_id_no_mutex_guard = *next_thread_id;
+        let thread_mutex = self.threads.clone();
+        let name_to_move = name.to_owned();
+        let to_spawn = move || -> MizeResult<()> {
+            debug!("spawning thread: {}", name_to_move);
+            let my_thread_id = my_thread_id_no_mutex_guard;
+
+            if let Err(err) = func() {
+                mize_clone.report_err(err);
+            }
+
+            //let mut threads_inner = thread_mutex.lock()?;
+            /*
+            *threads_inner = threads_inner
+                .clone()
+                .into_iter()
+                .filter(|el| match el {
+                    (my_thread_id, _) => false,
+                    (_, _) => true,
+                })
+                .collect();
+                 */
+            debug!("thread '{}' stopped", name_to_move);
+            Ok(())
+        };
+
+        *next_thread_id += 1;
+
+        #[cfg(feature = "target-os")]
+        let handle = thread::spawn(move || to_spawn());
+
+        threads_inner.push((*next_thread_id, name.to_owned(), Some(handle)));
+
+        #[cfg(feature = "target-wasm ")]
+        {
+            //console_log!("in instance::spawn with wasm target")
+        }
+        //NOT WELL SUPPORTED
+        //crate::platform::wasm::wasm_spawn(to_spawn)?;
+
+        Ok(())
+    }
+
+    pub fn spawn_background(
         &mut self,
         name: &str,
         func: impl FnOnce() -> MizeResult<()> + Send + 'static,
     ) -> MizeResult<()> {
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
-
-        threads_inner.push((*next_thread_id, name.to_owned()));
 
         let my_thread_id_no_mutex_guard = *next_thread_id;
         let thread_mutex = self.threads.clone();
@@ -687,6 +737,7 @@ impl Mize {
             func()?;
 
             let mut threads_inner = thread_mutex.lock()?;
+            /*
             *threads_inner = threads_inner
                 .clone()
                 .into_iter()
@@ -695,6 +746,7 @@ impl Mize {
                     (_, _) => true,
                 })
                 .collect();
+                 */
             debug!("thread '{}' stopped", name_to_move);
             Ok(())
         };
@@ -703,6 +755,8 @@ impl Mize {
 
         #[cfg(feature = "target-os")]
         thread::spawn(move || to_spawn());
+
+        threads_inner.push((*next_thread_id, name.to_owned(), None));
 
         #[cfg(feature = "target-wasm ")]
         {
@@ -747,7 +801,7 @@ impl Mize {
         let mut threads_inner = self.threads.lock()?;
         let mut next_thread_id = self.next_thread_id.lock()?;
 
-        threads_inner.push((*next_thread_id, name.to_owned()));
+        threads_inner.push((*next_thread_id, name.to_owned(), None));
         let runtime_inner = self.runtime.lock().unwrap();
         runtime_inner.spawn(func);
 
@@ -780,7 +834,7 @@ impl Mize {
             .lock()
             .expect("mutex lock failed in spawn_async_blocking");
 
-        threads_inner.push((*next_thread_id, name.to_owned()));
+        threads_inner.push((*next_thread_id, name.to_owned(), None));
         let runtime_inner = self.runtime.lock().unwrap();
         let handle = runtime_inner.handle().to_owned();
         *next_thread_id += 1;
@@ -848,6 +902,12 @@ impl Mize {
         let mut parts = self.parts.lock().unwrap();
         for part in parts.values_mut() {
             part.as_deref_mut().unwrap().run(&mut self.clone())?;
+        }
+        let mut threads_inner = self.threads.lock().unwrap();
+        for (id, name, handle) in threads_inner.drain(..) {
+            if let Some(handle) = handle {
+                handle.join().unwrap()?;
+            }
         }
         Ok(())
     }

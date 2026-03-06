@@ -5,6 +5,9 @@ export class Mize {
   async add_opts(opts: any): Promise<void> {}
   async add_part(part: any): Promise<void> {}
   async report_err(err: MizeError) {}
+  runPhase() {
+    Deno.core.print("runPhase in js \n");
+  }
 }
 
 type MizeError = string;
