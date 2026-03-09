@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use mize::{mize_err, mize_part, Mize, MizeError, MizePart, MizeResult};
-use reqwest::{blocking::Client, blocking::RequestBuilder, blocking::Response, header, Method};
+use reqwest::{blocking::Client, blocking::Response, header, Method};
 use serde_json::{json, Value};
 use std::thread::sleep;
 use std::time::Duration;

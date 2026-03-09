@@ -1,3 +1,4 @@
+
 use mize::MizeResult;
 
 #[cfg(feature = "target-os")]
@@ -15,5 +16,7 @@ pub mod c2vi;
 #[cfg(feature = "target-os")]
 pub use c2vi::*;
 
+#[cfg(feature = "target-os")]
 pub mod js;
+#[cfg(feature = "target-os")]
 pub use js::*;

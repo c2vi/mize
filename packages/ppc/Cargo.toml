@@ -10,6 +10,26 @@ clap = { version = "4.5.59", optional = true }
 js-sys = { version = "0.3.85", optional = true }
 wasm-bindgen = { version = "0.2.108", optional = true }
 
+# server deps
+axum = { version = "0.8.0", optional = true }
+axum-extra = { version = "0.10.3", features = ["cookie-private"], optional = true }
+openidconnect = { version = "4", features = ["reqwest", "rustls-tls"], optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+reqwest = { version = "0.11", features = ["rustls-tls"], optional = true }
+rand = { version = "0.8", optional = true }
+url = { version = "2", optional = true }
+time = { version = "0.3", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+dioxus = { version = "0.7.1", features = ["router", "fullstack", "web", "desktop", "mobile", "server", "ssr"], optional = true }
+dioxus-ssr = { version = "0.5", optional = true }
+html-escape = { version = "0.2.13", optional = true }
+axum-oidc = { version = "1.0.0-dev-1", optional = true }
+tracing = { version = "0.1.44", optional = true }
+tower = { version = "0.5", optional = true }
+tower-sessions = { version = "0.14.0", optional = true }
+tower-http = { version = "0.6.8", features = ["trace"] }
+
 [[bin]]
 name = "ppc"
 path = "platform/os/main.rs"
@@ -21,8 +41,10 @@ name = "ppc"
 
 [features]
 default = ["target-os"]
-target-os = [ "clap", "mize/target-os", "marts/target-os" ]
+target-os = [ "clap", "mize/target-os", "marts/target-os", "server", "tracing" ]
 target-obsidian = [ "js-sys", "wasm-bindgen", "mize/target-wasm", "marts/target-wasm" ]
+server = [ "axum", "axum-extra", "openidconnect", "serde", "serde_json", "reqwest", "rand", "url", "time", "tokio", "dioxus", "dioxus-ssr", "html-escape", "axum-oidc", "tower", "tower-sessions" ]
+
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

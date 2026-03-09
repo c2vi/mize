@@ -267,6 +267,10 @@ rec {
   ################# dev Shels ################### 
 
     mkMizeRustShell = attrs: mkMizeModuleShell (attrs // {
+      shellHook = ''
+        mize_project_root=$(${lib.getExe pkgs.git} rev-parse --show-toplevel)
+        export MIZE_CONFIG_FILES=$mize_project_root/mize_config.toml
+      '';
       #_shell_type = "rust";
       nativeBuildInputs = attrs.nativeBuildInputs or [] ++ [
         pkgs.wasm-pack
@@ -274,6 +278,10 @@ rec {
         pkgs.spacetimedb
         pkgs.deno
         pkgs.pkg-config
+        pkgs.gobject-introspection
+        pkgs.gobject-introspection.dev
+        
+        # thanks to: https://github.com/NixOS/nixpkgs/pull/496279/changes
         (pkgs.buildWasmBindgenCli rec {
           src = pkgs.fetchCrate {
             pname = "wasm-bindgen-cli";
@@ -307,8 +315,38 @@ rec {
         })
       ];
 
-    buildInputs = [
-      pkgsCross.openssl
+    buildInputs = with pkgs; [
+      at-spi2-atk
+      atkmm
+      cairo
+      gdk-pixbuf
+      glib
+      gtk3
+      harfbuzz
+      librsvg
+      libsoup_3
+      pango
+      webkitgtk_4_1
+      openssl
+      wasm-bindgen-cli
+      lld_20
+      xdotool
+    ];
+    
+    LD_LIBRARY_PATH = with pkgs; pkgs.lib.makeLibraryPath [ 
+      xdotool 
+      webkitgtk_4_1
+      pango
+      openssl
+      at-spi2-atk
+      atkmm
+      cairo
+      gdk-pixbuf
+      glib
+      gtk3
+      harfbuzz
+      librsvg
+      libsoup_3
     ];
 
 

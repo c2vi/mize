@@ -5,12 +5,14 @@ use clap::crate_version;
 use mize::{Mize, MizeResult};
 
 fn main() {
-    let mut mize = Mize::new().expect("failed to create mize instance");
+    let mut mize = Mize::new().expect("failed to create mize");
 
     #[cfg(feature = "target-os")]
-    os_main(&mut mize);
+    let result = os_main(&mut mize);
 
-    mize.run();
+    if let Err(err) = result {
+        println!("EER: {:?}", err)
+    }
 }
 
 #[cfg(feature = "target-os")]
@@ -19,6 +21,7 @@ fn os_main(mize: &mut Mize) -> MizeResult<()> {
     //marts::js(mize)?;
     marts::habitica(mize)?;
     marts::c2vi(mize)?;
+    ppc::server(mize)?;
 
     let mut cli = mize.get_part_native::<marts::CliPart>("cli")?;
 
@@ -34,5 +37,12 @@ fn os_main(mize: &mut Mize) -> MizeResult<()> {
         println!("test ppc...");
         Ok(())
     });
-    Ok(())
+
+    cli.subcommand(Command::new("gui"), |_, _| {
+        ppc::ui::launch_desktop_app();
+        Ok(())
+    });
+
+    drop(cli);
+    mize.run()
 }

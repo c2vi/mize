@@ -286,6 +286,46 @@ impl ItemData {
             .to_owned()
             .into_item_data())
     }
+
+    pub fn get_paths_recursive(&mut self) -> MizeResult<Vec<String>> {
+        let mut paths = Vec::new();
+        let mut path_accu = Vec::new();
+        get_paths(&mut self.0, &mut paths, &mut path_accu, true)?;
+        Ok(paths)
+    }
+
+    pub fn get_paths(&mut self) -> MizeResult<Vec<String>> {
+        let mut paths = Vec::new();
+        let mut path_accu = Vec::new();
+        get_paths(&mut self.0, &mut paths, &mut path_accu, false)?;
+        Ok(paths)
+    }
+}
+
+fn get_paths(
+    val: &mut CborValue,
+    paths: &mut Vec<String>,
+    path_accu: &mut Vec<String>,
+    recurse: bool,
+) -> MizeResult<()> {
+    let map = val
+        .as_map_mut()
+        .ok_or(mize_err!("ItemData is not map... when calling get_paths"))?;
+    for (key, val) in map {
+        let text = key
+            .as_text()
+            .ok_or(mize_err!("ItemData::get_paths but key is not of type text"))?
+            .to_owned();
+        if recurse && val.is_map() {
+            let mut path_accu = path_accu.clone();
+            path_accu.push(text);
+            get_paths(val, paths, &mut path_accu, recurse)?;
+        } else {
+            let path = path_accu.join("/") + "/" + text.as_str();
+            paths.push(path);
+        }
+    }
+    Ok(())
 }
 
 impl Default for ItemData {

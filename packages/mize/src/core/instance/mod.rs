@@ -296,7 +296,7 @@ impl Mize {
 
         let mut instance = Mize::empty()?;
 
-        instance.init();
+        instance.init()?;
 
         debug!(
             "instance inited with config: {}",
@@ -868,6 +868,7 @@ impl Mize {
 
         // get the cached value
         if let Some(val) = opt.val.clone() {
+            println!("get_config: {name} has cached value: {val}");
             return Ok(val);
         }
 
@@ -886,12 +887,17 @@ impl Mize {
 
     pub fn new_opt(&mut self, name: &str) -> ConfigOptNameAndMize {
         let mut config_opts = self.config_opts.lock().unwrap();
-        let opt = ConfigOpt {
-            name: name.to_owned(),
-            val: None,
-            thunk: None,
-        };
-        config_opts.insert(name.to_string(), opt);
+        match config_opts.get_mut(name) {
+            Some(opt) => {}
+            None => {
+                let opt = ConfigOpt {
+                    name: name.to_owned(),
+                    val: None,
+                    thunk: None,
+                };
+                config_opts.insert(name.to_string(), opt);
+            }
+        }
         ConfigOptNameAndMize {
             name: name.to_string(),
             mize: self.clone(),

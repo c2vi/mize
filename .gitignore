@@ -8,6 +8,7 @@ rust_dist
 deno_dist
 node_modules
 .env
+mize_config.toml
 
 # I put testing stuff for this projekt that I don't want to push to github into a folder called gitignore
 gitignore

@@ -4,6 +4,5 @@ members = [
     "packages/marts",
     "packages/mize",
     "packages/ppc",
-    "test", "test",
 ]
 resolver = "2"
