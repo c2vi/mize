@@ -18,6 +18,7 @@ fn os_main(mize: &mut Mize) -> MizeResult<()> {
     marts::cli(mize)?;
     //marts::js(mize)?;
     marts::habitica(mize)?;
+    marts::c2vi(mize)?;
 
     let mut cli = mize.get_part_native::<marts::CliPart>("cli")?;
 

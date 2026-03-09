@@ -1,6 +1,5 @@
-# Mize Codebase Architecture Guide for AI Agents
+# Mize
 
-## Overview
 Mize is a strongly typed "filesystem" for the age of connectivity, elevating the Unix file philosophy into modern distributed computing.
 
 ## Codebase Structure
@@ -17,109 +16,47 @@ packages/
 
 ## Key Components
 
-### 1. Core Mize Framework (`packages/mize/`)
-- **Language**: Rust
-- **Target platforms**: OS (native), WASM (web), bare metal, JVM
-- **Key features**:
-  - Strongly typed filesystem abstraction
-  - Module system with dynamic loading
-  - Memory store implementation
-  - Protocol versioning and serialization
-  - Cross-platform support
+To understand the main components of the architecture you canr efer to `architecture.md`.
 
-**Architecture layers:**
-- `core/`: Platform-independent logic
-  - `config/`: Configuration management
-  - `error/`: Error handling
-  - `id/`: Unique identifier system
-  - `instance/`: Mize runtime instances
-  - `item/`: Filesystem item abstractions
-  - `memstore/`: In-memory storage
-  - `proto/`: Protocol definitions
-  - `types/`: Core type definitions
+## Require clarification and plan approval before making code changes
 
-- `platform/`: Platform-specific implementations
-  - `os/`: Native OS integration
-  - `wasm/`: WebAssembly support
-  - `bare/`: Bare metal targets
-  - `jvm/`: Java Virtual Machine integration
+Before making any code changes other than the changelog, you must follow this two-step process:
 
-### 2. Marts (`packages/marts/`)
-- **Language**: Rust + TypeScript
-- **Purpose**: Collection of Mize framework parts and utilities
-- **Key features**:
-  - CLI tools
-  - JavaScript/TypeScript integration
-  - Habitica integration
-  - Deno-based scripting support
+### Step 1: Ask Clarifying Questions
 
-### 3. MME - Mize Module Environment (`packages/mme/`)
-- **Language**: Rust
-- **Purpose**: Module execution environment
-- **Key features**:
-  - Cross-platform module loading
-  - Qt and Slint UI support
-  - Web view integration (tao/wry)
-  - Command system (comandr)
+- Always ask at least one clarifying question about the user's request
+- Understand the full scope and context of what they're asking for
+- Clarify any ambiguous requirements or edge cases
+- Ask about preferred approaches if multiple solutions exist
+- Confirm the expected behavior and user experience
 
-### 4. PPC - Platform Components (`packages/ppc/`)
-- **Language**: Rust + TypeScript
-- **Purpose**: Platform-specific implementations
-- **Targets**: Obsidian plugin, OS integration
+### Step 2: Present Implementation Plan
 
-### 5. Vic - Victor CLI (`packages/vic/`)
-- **Language**: Rust
-- **Purpose**: Command-line interface tool
-- **Features**: Build, run, test, and manage Mize applications
+- After receiving clarification, present a detailed implementation plan
+- Break down the work into specific, actionable steps
+- Identify which files will be created, modified, or deleted
+- Explain the technical approach and any architectural decisions
+- Highlight any potential risks, trade-offs, or dependencies
+- Estimate the complexity and scope of changes
+- **Wait for explicit user approval** before proceeding with any code changes
 
-## Build System
+### Approval Requirements
 
-- **Rust**: Cargo workspace with feature flags for different targets
-- **TypeScript**: Deno-based build system
-- **Cross-compilation**: Support for WASM and multiple OS targets
+- User must explicitly approve the plan with words like "yes", "approved", "proceed", "go ahead", or similar
+- If the user suggests modifications to the plan, incorporate them and seek re-approval
+- Do not assume silence or ambiguous responses mean approval
 
-## Key Technologies
+### Exceptions
 
-- **Rust crates**: tokio, serde, wasm-bindgen, tracing, clap
-- **WASM**: wasm-pack, web-sys
-- **UI**: tao, wry, slint, Qt
-- **Scripting**: Deno, rustyscript
-- **Serialization**: ciborium (CBOR), serde_json, toml
+- This process may be skipped only for trivial changes like fixing obvious typos or formatting
+- When in doubt, always follow the full process rather than assuming an exception applies
 
-## Development Patterns
+### Example Workflow
 
-1. **Feature flags**: Extensive use of Cargo features for platform targeting
-2. **Cross-platform abstraction**: Core logic separated from platform implementations
-3. **Module system**: Dynamic loading of functionality
-4. **Strong typing**: Rust's type system used for filesystem safety
-
-## Next Steps Discussion
-
-The codebase appears to be in active development with these key areas for future work:
-
-1. **Platform completion**: Finish OS, WASM, and other platform implementations
-2. **Module ecosystem**: Develop more built-in modules
-3. **Performance optimization**: Memory management and serialization
-4. **Testing**: Comprehensive test coverage across platforms
-5. **Documentation**: User-facing documentation and examples
-6. **Integration**: Better integration with existing tools and systems
-
-## Working with the Codebase
-
-**For AI Agents:**
-- Focus on the `core/` directory for platform-independent logic
-- Use feature flags appropriately when building/testing
-- Understand the module system for extending functionality
-- Pay attention to cross-platform considerations
-
-**Build targets:**
-- `target-os`: Native operating system builds
-- `target-wasm`: WebAssembly builds
-- Other platform-specific targets as needed
-
-## Key Files for Understanding
-
-- `packages/mize/Cargo.toml`: Core dependencies and features
-- `packages/mize/src/lib.rs`: Main library entry point
-- `packages/mize/src/core/`: Core platform-independent logic
-- `packages/mize/src/platform/`: Platform-specific implementations
+1. User: "Add a login form to the app"
+2. Assistant: "I'd like to clarify a few things about the login form: [questions]"
+3. User: [provides answers]
+4. Assistant: "Based on your requirements, here's my implementation plan: [detailed plan]. Does this approach look good to you?"
+5. User: "Yes, that looks good"
+6. Assistant: [writes plan to file].
+7. Assistant: [proceeds with implementation].

@@ -20,10 +20,17 @@ pub fn habitica(mize: &mut Mize) -> MizeResult<()> {
     }))
 }
 
-impl MizePart for Habitica {}
+impl MizePart for Habitica {
+    fn opts(&self, mize: &mut Mize) {
+        mize.new_opt("habitica.api_url");
+        mize.new_opt("habitica.user_id");
+        mize.new_opt("habitica.api_token");
+        mize.new_opt("habitica.client_name");
+    }
+}
 
 impl Habitica {
-    fn api_request(&mut self, method: Method, path: String, data: Value) -> MizeResult<Value> {
+    pub fn api_request(&mut self, method: Method, path: String, data: Value) -> MizeResult<Value> {
         let api_url = self.mize.get_config("habitica.api_url")?.to_string();
         let user_id = self.mize.get_config("habitica.user_id")?.to_string();
         let api_token = self.mize.get_config("habitica.api_token")?.to_string();
@@ -64,6 +71,18 @@ impl Habitica {
 
         let json_response: Value = response.json()?;
         Ok(json_response.get("data").cloned().unwrap_or(Value::Null))
+    }
+
+    pub fn get_tasks(&mut self, task_type: &str) -> MizeResult<Value> {
+        self.api_request(
+            Method::GET,
+            format!("tasks/user?type={}", task_type),
+            json!({}),
+        )
+    }
+
+    pub fn delete_task(&mut self, id: &str) -> MizeResult<Value> {
+        self.api_request(Method::DELETE, format!("tasks/{}", id), json!({}))
     }
 }
 
